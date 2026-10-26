@@ -174,6 +174,8 @@ static void render_hints(const hint_t *hints)
     const hint_t *fixed[64];
     float fw[64];
     float total = 0, pos;
+    // Hints must not overlap the menu items on narrow screens.
+    const float min_x = gui_get_current_pos_x() + gap;
 
     // Split the coordinates hint (whose width varies every frame) from the
     // fixed hints, so the fixed ones can be right-aligned and stay stable.
@@ -187,11 +189,16 @@ static void render_hints(const hint_t *hints)
         fixed[nf++] = &hints[i];
     }
     total += gap * (nf > 0 ? nf - 1 : 0);
+    // Drop the less important hints until the rest fits.
+    while (nf > 0 && gui_get_window_width() - total - gap < min_x) {
+        nf--;
+        total -= fw[nf] + (nf > 0 ? gap : 0);
+    }
     pos = gui_get_window_width() - total - gap;
 
     // The coordinates hint goes to the left of the fixed block so its varying
     // width does not push the other hints around.
-    if (coord)
+    if (coord && pos - hint_width(coord) - gap >= min_x)
         render_hint(coord, pos - hint_width(coord) - gap);
     for (i = 0; i < nf; i++) {
         render_hint(fixed[i], pos);

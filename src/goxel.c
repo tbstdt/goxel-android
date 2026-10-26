@@ -902,6 +902,10 @@ static void update_keymaps_hints(void)
     char title[128];
     const char *msg = "";
 
+#ifdef __ANDROID__
+    return; // Mouse button hints make no sense on a touch screen.
+#endif
+
     for (i = 0; i < arrlen(goxel.keymaps); i++) {
         action = goxel.keymaps[i].action;
         input = goxel.keymaps[i].input;
