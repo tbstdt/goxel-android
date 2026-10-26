@@ -70,7 +70,17 @@ javac -source 8 -target 8 -nowarn -Xlint:-options \
 # 4. Package, align, sign.
 echo "== package"
 cp "$OUT/base.apk" "$OUT/unsigned.apk"
-(cd "$OUT/apk" && zip -qr "$OUT/unsigned.apk" classes.dex lib)
+if command -v zip > /dev/null; then
+    (cd "$OUT/apk" && zip -qr "$OUT/unsigned.apk" classes.dex lib)
+else
+    (cd "$OUT/apk" && python3 -c '
+import os, sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "a", zipfile.ZIP_DEFLATED) as z:
+    z.write("classes.dex")
+    for root, dirs, files in os.walk("lib"):
+        for f in sorted(files): z.write(os.path.join(root, f))
+' "$OUT/unsigned.apk")
+fi
 "$BT/zipalign" -f -p 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
 
 KEYSTORE=${KEYSTORE:-$HOME/.android/goxel-debug.keystore}

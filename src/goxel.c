@@ -1893,18 +1893,41 @@ ACTION_REGISTER(ACTION_quit,
     .default_shortcut = "Ctrl Q",
 )
 
+// Data of the unsaved changes popup.
+typedef struct {
+    bool import;
+    char path[];
+} open_request_t;
+
+/*
+ * Replace the current image with a file.  gox files are opened (so that
+ * save writes them back), other formats (or gox files with import set) are
+ * imported into a new image.
+ */
+static void open_now(const char *path, bool import)
+{
+    if (!path) {
+        goxel_reset();
+        return;
+    }
+    if (!import && str_endswith(path, ".gox")) {
+        load_from_file(path, true);
+        return;
+    }
+    goxel_reset();
+    if (goxel_import_file(path, NULL) != 0)
+        gui_alert(_("Error"), _("Cannot open the file"));
+}
+
 static int unsaved_change_popup(void *data)
 {
+    const open_request_t *req = data;
     gui_text(_("Discard current image?"));
     int ret = 0;
 
     gui_row_begin(0);
     if (gui_button(_("Discard"), 0, 0)) {
-        if (!data) {
-            goxel_reset();
-        } else {
-            load_from_file((const char *)data, true);
-        }
+        open_now(req ? req->path : NULL, req && req->import);
         ret = 1;
     }
     if (gui_button(_("Cancel"), 0, 0)) {
@@ -1914,20 +1937,27 @@ static int unsaved_change_popup(void *data)
     return ret;
 }
 
-void goxel_open_file(const char *path)
+void goxel_open_file_ex(const char *path, bool import)
 {
+    open_request_t *req = NULL;
+
     if (path) sys_on_open_file(path);
     if (image_get_key(goxel.image) == goxel.image->saved_key) {
-        if (!path) {
-            goxel_reset();
-        } else {
-            load_from_file(path, true);
-        }
+        open_now(path, import);
         return;
     }
-    gui_open_popup("Unsaved Changes", GUI_POPUP_RESIZE,
-                   path ? strdup(path) : NULL,
+    if (path) {
+        req = calloc(1, sizeof(*req) + strlen(path) + 1);
+        req->import = import;
+        strcpy(req->path, path);
+    }
+    gui_open_popup("Unsaved Changes", GUI_POPUP_RESIZE, req,
                    unsaved_change_popup);
+}
+
+void goxel_open_file(const char *path)
+{
+    goxel_open_file_ex(path, false);
 }
 
 static void a_reset(void)

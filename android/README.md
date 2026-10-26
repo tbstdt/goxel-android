@@ -45,6 +45,11 @@ gets a local copy in the app storage, and every time goxel writes it (Save,
 Save As, Export, Overwrite export) it is copied back to the document.  Open
 Recent works, and refreshes the local copy from the document.
 
+Goxel also shows up in "Open with" and "Share" for the formats it can read
+(gox, vox, qb, qbcl, vxl, kv6, kvx, mts, obj, txt).  A gox file opened with
+write access is saved back in place; other files are opened as a new image
+(Save asks where to save the gox).
+
 Unsaved work is autosaved when the app goes to the background and every
 minute.  If Android kills the app, it proposes to restore it on the next
 start.

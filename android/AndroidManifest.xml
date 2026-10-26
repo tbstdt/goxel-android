@@ -24,6 +24,69 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- "Open with": files whose mime type is unknown to android. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/x-goxel" />
+                <data android:mimeType="model/obj" />
+            </intent-filter>
+            <!-- "Open with": any mime type, matched on the file extension
+                 (pathPattern only matches the first dot, hence the repeats).
+                 Must match OPEN_EXTS in GoxelActivity (except txt, too
+                 generic). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.gox" />
+                <data android:pathPattern=".*\\..*\\.gox" />
+                <data android:pathPattern=".*\\..*\\..*\\.gox" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.gox" />
+                <data android:pathPattern=".*\\.vox" />
+                <data android:pathPattern=".*\\..*\\.vox" />
+                <data android:pathPattern=".*\\..*\\..*\\.vox" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.vox" />
+                <data android:pathPattern=".*\\.qb" />
+                <data android:pathPattern=".*\\..*\\.qb" />
+                <data android:pathPattern=".*\\..*\\..*\\.qb" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.qb" />
+                <data android:pathPattern=".*\\.qbcl" />
+                <data android:pathPattern=".*\\..*\\.qbcl" />
+                <data android:pathPattern=".*\\..*\\..*\\.qbcl" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.qbcl" />
+                <data android:pathPattern=".*\\.vxl" />
+                <data android:pathPattern=".*\\..*\\.vxl" />
+                <data android:pathPattern=".*\\..*\\..*\\.vxl" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.vxl" />
+                <data android:pathPattern=".*\\.kv6" />
+                <data android:pathPattern=".*\\..*\\.kv6" />
+                <data android:pathPattern=".*\\..*\\..*\\.kv6" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.kv6" />
+                <data android:pathPattern=".*\\.kvx" />
+                <data android:pathPattern=".*\\..*\\.kvx" />
+                <data android:pathPattern=".*\\..*\\..*\\.kvx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.kvx" />
+                <data android:pathPattern=".*\\.mts" />
+                <data android:pathPattern=".*\\..*\\.mts" />
+                <data android:pathPattern=".*\\..*\\..*\\.mts" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.mts" />
+                <data android:pathPattern=".*\\.obj" />
+                <data android:pathPattern=".*\\..*\\.obj" />
+                <data android:pathPattern=".*\\..*\\..*\\.obj" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.obj" />
+            </intent-filter>
+            <!-- "Share" to goxel. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

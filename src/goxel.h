@@ -653,6 +653,10 @@ void goxel_render_to_buf(uint8_t *buf, int w, int h, int bpp);
 
 void goxel_open_file(const char *path);
 
+// Like goxel_open_file, but if import is set gox files are imported into
+// a new image instead of opened (so that save doesn't write them back).
+void goxel_open_file_ex(const char *path, bool import);
+
 void save_to_file(const image_t *img, const char *path);
 
 // Autosave (see autosave.c), for platforms that can kill the app.

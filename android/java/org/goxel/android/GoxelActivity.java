@@ -12,9 +12,12 @@ import android.app.NativeActivity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Parcelable;
+import android.os.Process;
 import android.provider.OpenableColumns;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -27,7 +30,10 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /*
@@ -52,7 +58,13 @@ public class GoxelActivity extends NativeActivity {
         System.loadLibrary("goxel");
     }
 
+    // Formats goxel can open (see src/formats), must match the manifest.
+    private static final List<String> OPEN_EXTS = Arrays.asList(
+            "gox", "vox", "qb", "qbcl", "vxl", "kv6", "kvx", "mts", "obj",
+            "txt");
+
     private static native void nativeDialogResult(String path);
+    private static native void nativeOpenFile(String path, boolean imp);
 
     // Local copy path -> document URI, persisted in the preferences.
     private SharedPreferences docs;
@@ -67,6 +79,73 @@ public class GoxelActivity extends NativeActivity {
         // Assume the local copies are in sync with the documents.
         for (String path : docs.getAll().keySet())
             synced.put(path, fileState(new File(path)));
+        // Not when recreated: the file was already opened.
+        if (savedInstanceState == null) handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIntent(intent);
+    }
+
+    /*
+     * "Open with" / "Share" from another app.  If we can write the document
+     * it becomes a normal document (save writes it back), otherwise we open
+     * a copy without a save path.
+     */
+    private void handleIntent(Intent intent) {
+        Uri uri = null;
+        if (intent == null) return;
+        if (Intent.ACTION_VIEW.equals(intent.getAction())) {
+            uri = intent.getData();
+        } else if (Intent.ACTION_SEND.equals(intent.getAction())) {
+            Parcelable p = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (p instanceof Uri) uri = (Uri)p;
+        }
+        if (uri == null) return;
+        final Uri fUri = uri;
+        final boolean writable = Intent.ACTION_VIEW.equals(intent.getAction())
+            && (intent.getFlags() & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0
+            && checkUriPermission(uri, Process.myPid(), Process.myUid(),
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION) ==
+                    PackageManager.PERMISSION_GRANTED;
+        new Thread(new Runnable() {
+            public void run() { openExternal(fUri, writable); }
+        }).start();
+    }
+
+    private void openExternal(Uri uri, boolean writable) {
+        String name = getDisplayName(uri);
+        int dot = name.lastIndexOf('.');
+        String ext = dot < 0 ? "" :
+            name.substring(dot + 1).toLowerCase(Locale.ROOT);
+        if (!OPEN_EXTS.contains(ext)) {
+            toast("Goxel cannot open " + name);
+            return;
+        }
+        // goxel matches the extensions in lower case.
+        name = name.substring(0, dot + 1) + ext;
+        if (writable) takePermission(uri);
+        File dir;
+        if (writable) {
+            dir = localFile(uri).getParentFile();
+        } else {
+            dir = new File(getCacheDir(), "opened");
+            dir.mkdirs();
+        }
+        File file = new File(dir, name);
+        try {
+            copy(getContentResolver().openInputStream(uri),
+                 new FileOutputStream(file));
+        } catch (Exception e) {
+            Log.e(TAG, "Cannot read " + uri, e);
+            toast("Cannot read " + name);
+            return;
+        }
+        if (writable) setDocument(file, uri);
+        nativeOpenFile(file.getAbsolutePath(), !writable);
     }
 
     @Override

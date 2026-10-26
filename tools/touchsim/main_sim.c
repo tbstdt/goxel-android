@@ -36,6 +36,7 @@
  *   back                   Android back button.
  *   menu PATH              Click a touch menu item, e.g. menu File/Save As
  *   dialog PATH            Answer the next file dialog with PATH.
+ *   open PATH [import]     File sent by another app ("open with").
  *   shot PATH              Save the current frame.
  *   log TEXT               Print TEXT.
  */
@@ -207,6 +208,10 @@ static bool run_line(char *line)
         }
         g.fingers[0].down = false;
         frames(2);
+    } else if (strcmp(cmd, "open") == 0) {
+        if (sscanf(line, "%*s %1023s %31s", arg, cmd) < 1) return false;
+        goxel_open_file_ex(arg, strcmp(cmd, "import") == 0);
+        frames(3);
     } else if (strcmp(cmd, "dialog") == 0) {
         sscanf(line, "%*s %1023s", g.dialog_path);
     } else if (strcmp(cmd, "menu") == 0) {

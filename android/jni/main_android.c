@@ -68,6 +68,10 @@ static struct {
     char        dialog_path[1024];
     bool        dialog_ok;
 
+    // File sent by another app ("open with"), set from the java UI thread.
+    char        open_path[1024];
+    bool        open_import;
+
 } g = {
     .display = EGL_NO_DISPLAY,
     .surface = EGL_NO_SURFACE,
@@ -117,6 +121,39 @@ Java_org_goxel_android_GoxelActivity_nativeDialogResult(
     atomic_store(&g.dialog_done, true);
     pthread_mutex_unlock(&g.dialog_mutex);
     if (g.app && g.app->looper) ALooper_wake(g.app->looper);
+}
+
+/*
+ * Called from the java UI thread when another app asks us to open a file
+ * (already copied locally).  If import is set, the file is opened as a new
+ * image without a save path (we can't write the original document).
+ */
+JNIEXPORT void JNICALL
+Java_org_goxel_android_GoxelActivity_nativeOpenFile(
+        JNIEnv *env, jclass cls, jstring path, jboolean import)
+{
+    const char *str = (*env)->GetStringUTFChars(env, path, NULL);
+    pthread_mutex_lock(&g.dialog_mutex);
+    snprintf(g.open_path, sizeof(g.open_path), "%s", str);
+    g.open_import = import;
+    pthread_mutex_unlock(&g.dialog_mutex);
+    (*env)->ReleaseStringUTFChars(env, path, str);
+    if (g.app && g.app->looper) ALooper_wake(g.app->looper);
+}
+
+static void open_pending_file(void)
+{
+    char path[1024];
+    bool import;
+
+    pthread_mutex_lock(&g.dialog_mutex);
+    snprintf(path, sizeof(path), "%s", g.open_path);
+    import = g.open_import;
+    g.open_path[0] = '\0';
+    pthread_mutex_unlock(&g.dialog_mutex);
+    if (!path[0]) return;
+    goxel_open_file_ex(path, import);
+    if (!import && str_endswith(path, ".gox")) goxel_add_recent_file(path);
 }
 
 static void show_keyboard(void *user, bool show)
@@ -550,6 +587,7 @@ void android_main(struct android_app *app)
             autosave_init(g.app->activity->internalDataPath);
             autosave_check_restore();
         }
+        open_pending_file();
         render_frame(&inputs);
         if (goxel.quit) {
             // The user chose to quit: nothing to restore.
