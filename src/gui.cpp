@@ -561,7 +561,23 @@ void gui_on_back(void)
     g_back_requested = true;
 }
 
-// Close the top most thing (popup, menu, panel), or ask to quit.
+static void find_open_filter(void *arg, filter_t *filter)
+{
+    if (filter->is_open) *(filter_t**)arg = filter;
+}
+
+// Close the last open filter window, return false if there is none.
+static bool close_last_filter(void)
+{
+    filter_t *filter = NULL;
+    filters_iter_all(&filter, find_open_filter);
+    if (!filter) return false;
+    if (filter->on_close) filter->on_close(filter);
+    filter->is_open = false;
+    return true;
+}
+
+// Close the top most thing (popup, menu, filter, panel), or ask to quit.
 static void handle_back(void)
 {
     ImGuiContext& g = *GImGui;
@@ -573,6 +589,8 @@ static void handle_back(void)
         ImGui::ClosePopupToLevel(g.OpenPopupStack.Size - 1, true);
         return;
     }
+    // Filter windows are drawn over the panels.
+    if (close_last_filter()) return;
     if (goxel.gui.current_panel) {
         goxel.gui.current_panel = 0;
         return;
@@ -593,6 +611,19 @@ static void render_popups(int index)
     if (!popup->opened) {
         ImGui::OpenPopup(popup->title);
         popup->opened = true;
+    } else if (!ImGui::IsPopupOpen(popup->title)) {
+        // Closed by ImGui itself (e.g. another popup opened at the same
+        // level): forget it, otherwise no other popup could be shown.
+        LOG_W("Popup %s closed", popup->title);
+        gui->popup_count--;
+        popup->title = NULL;
+        popup->func = NULL;
+        free(popup->data);
+        popup->data = NULL;
+        if (popup->on_closed) popup->on_closed(2);
+        popup->on_closed = NULL;
+        popup->opened = false;
+        return;
     }
     flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove;
     if (popup->flags & GUI_POPUP_FULL) {
@@ -607,6 +638,13 @@ static void render_popups(int index)
     if (popup->title[0] == '#') {
         flags |= ImGuiWindowFlags_NoTitleBar;
     }
+#ifdef GOXEL_TOUCH_UI
+    // Never wider than the screen, long texts are wrapped (see below).
+    if (!(popup->flags & GUI_POPUP_FULL))
+        ImGui::SetNextWindowSizeConstraints(
+                ImVec2(min(280.0f, io.DisplaySize.x - 16), 0),
+                ImVec2(io.DisplaySize.x - 16, io.DisplaySize.y - 16));
+#endif
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, 10));
     ImGui::PushStyleColor(ImGuiCol_PopupBg, COLOR(WINDOW, BACKGROUND, false));
@@ -614,7 +652,9 @@ static void render_popups(int index)
 
     if (ImGui::BeginPopupModal(popup->title, NULL, flags)) {
         typeof(popup->func) func = popup->func;
+        if (DEFINED(GOXEL_TOUCH_UI)) ImGui::PushTextWrapPos(0);
         r = func(popup->data);
+        if (DEFINED(GOXEL_TOUCH_UI)) ImGui::PopTextWrapPos();
         if (!r && g_back_requested && index == gui->popup_count - 1) {
             g_back_requested = false;
             r = 2; // Same as a cancel button.
@@ -1644,6 +1684,8 @@ bool gui_button(const char *label, float size, int icon)
         w = ImGui::CalcTextSize(label, NULL, true).x + style.FramePadding.x * 2;
         if (w < gui_get_item_height())
             button_size.x = gui_get_item_height();
+        // Wide enough to be easily hit with a finger.
+        if (DEFINED(GOXEL_TOUCH_UI) && w < 80) button_size.x = 80;
     }
 
     if (gui->item_size) button_size.x = gui->item_size;
@@ -2062,30 +2104,77 @@ void gui_menu_bar_end(void)
 
 
 // Touch menu state: when set, the menus are rendered as collapsible
-// sections and the items as full width buttons.
+// sections (only one top level section open at a time) and the items as
+// full width buttons.
 static struct {
-    bool active;
-    int  depth;
+    bool    active;
+    int     depth;
+    char    path[256];      // Labels of the open menus, '/' separated.
+    ImGuiID open_section;   // Top level section currently open.
+    char    simulate[256];  // Item path to click (tests), see below.
+    bool    simulate_open;
 } g_touch_menu = {};
+
+/*
+ * For tests (touchsim): click on a touch menu item from its path, e.g.
+ * "File/Save As": the menu is opened, and the sections and the item act as
+ * if they were tapped.
+ */
+void gui_touch_menu_simulate(const char *path)
+{
+    snprintf(g_touch_menu.simulate, sizeof(g_touch_menu.simulate), "%s",
+             path);
+    g_touch_menu.simulate_open = true;
+}
+
+// Current menu path + label.
+static void touch_menu_path(const char *label, char *buf, size_t size)
+{
+    snprintf(buf, size, "%s%s%s", g_touch_menu.path,
+             g_touch_menu.path[0] ? "/" : "", label);
+}
 
 bool gui_menu_begin(const char *label, bool enabled)
 {
     bool ret;
+    char path[256];
+    size_t len;
+    ImGuiID id;
+
     if (!g_touch_menu.active)
         return ImGui::BeginMenu(label, enabled);
+
+    touch_menu_path(label, path, sizeof(path));
+    len = strlen(path);
+    // Test click on an item inside this menu.
+    if (strncmp(g_touch_menu.simulate, path, len) == 0 &&
+            g_touch_menu.simulate[len] == '/')
+        ImGui::SetNextItemOpen(true);
+
     ImGui::BeginDisabled(!enabled);
-    if (g_touch_menu.depth == 0)
+    if (g_touch_menu.depth == 0) {
+        id = ImGui::GetID(label);
+        if (!(GImGui->NextItemData.HasFlags & ImGuiNextItemDataFlags_HasOpen))
+            ImGui::SetNextItemOpen(g_touch_menu.open_section == id);
         ret = ImGui::CollapsingHeader(label);
-    else
+        if (ret) g_touch_menu.open_section = id;
+        else if (g_touch_menu.open_section == id)
+            g_touch_menu.open_section = 0;
+    } else {
         ret = ImGui::TreeNodeEx(label, ImGuiTreeNodeFlags_Framed |
                                        ImGuiTreeNodeFlags_SpanAvailWidth);
+    }
     ImGui::EndDisabled();
-    if (ret) g_touch_menu.depth++;
+    if (ret) {
+        g_touch_menu.depth++;
+        snprintf(g_touch_menu.path, sizeof(g_touch_menu.path), "%s", path);
+    }
     return ret;
 }
 
 void gui_menu_end(void)
 {
+    char *sep;
     if (!g_touch_menu.active) {
         ImGui::EndMenu();
         return;
@@ -2093,11 +2182,15 @@ void gui_menu_end(void)
     if (g_touch_menu.depth == 0) return;
     g_touch_menu.depth--;
     if (g_touch_menu.depth > 0) ImGui::TreePop();
+    sep = strrchr(g_touch_menu.path, '/');
+    if (sep) *sep = '\0';
+    else g_touch_menu.path[0] = '\0';
 }
 
 bool gui_menu_item(int action, const char *label, bool enabled)
 {
     const action_t *a = NULL;
+    char path[256];
     bool ret;
     if (action) {
         a = action_get(action, true);
@@ -2107,6 +2200,11 @@ bool gui_menu_item(int action, const char *label, bool enabled)
         ImGui::BeginDisabled(!enabled);
         ret = ImGui::Button(label, ImVec2(-FLT_MIN, 0));
         ImGui::EndDisabled();
+        touch_menu_path(label, path, sizeof(path));
+        if (enabled && strcmp(path, g_touch_menu.simulate) == 0) {
+            g_touch_menu.simulate[0] = '\0';
+            ret = true;
+        }
         if (ret) ImGui::CloseCurrentPopup();
     } else {
         ret = ImGui::MenuItem(label, a ? a->shortcut : NULL, false, enabled);
@@ -2122,8 +2220,11 @@ void gui_touch_menu_button(void (*menu_fn)(void))
     ImVec4 bg = COLOR(MENU, BACKGROUND, false);
     ImVec4 item = COLOR(WIDGET, INNER, false);
 
-    if (gui_selectable_icon(_("Menu"), &v, ICON_MENU))
+    if (gui_selectable_icon(_("Menu"), &v, ICON_MENU) ||
+            g_touch_menu.simulate_open) {
         ImGui::OpenPopup("##touch_menu");
+        g_touch_menu.simulate_open = false;
+    }
 
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetItemRectMin().x,
                                    ImGui::GetItemRectMax().y + 4));
@@ -2150,6 +2251,7 @@ void gui_touch_menu_button(void (*menu_fn)(void))
     if (ImGui::BeginPopup("##touch_menu", ImGuiWindowFlags_NoScrollbar)) {
         g_touch_menu.active = true;
         g_touch_menu.depth = 0;
+        g_touch_menu.path[0] = '\0';
         menu_fn();
         g_touch_menu.active = false;
         gui_pan_scroll_behavior(1);

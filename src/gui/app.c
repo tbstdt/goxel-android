@@ -229,6 +229,8 @@ static void gui_filter_window(void *arg, filter_t *filter)
         gui_window_end();
     }
 
+    // On touch screens, filters open at the panels position.
+    if (DEFINED(GOXEL_TOUCH_UI)) return;
     state->next_x += RELATIVE_FILTER_OFFSET;
     state->next_y += RELATIVE_FILTER_OFFSET;
 }
@@ -300,6 +302,7 @@ void gui_app(void)
 
     filter_layout_state.next_x = x + goxel.gui.panel_width +
                                     INITIAL_FILTER_OFFSET;
+    if (DEFINED(GOXEL_TOUCH_UI)) filter_layout_state.next_x = x;
     filter_layout_state.next_y = y;
     filters_iter_all(&filter_layout_state, gui_filter_window);
 

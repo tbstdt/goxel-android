@@ -99,7 +99,7 @@ void gui_menu(void)
                 image_get_key(goxel.image) != goxel.image->saved_key);
         gui_menu_item(ACTION_save_as, _("Save As"), true);
         gui_menu_item(ACTION_open, _("Open"), true);
-        if (gui_menu_begin(_("Open Recent"), true)) {
+        if (gui_menu_begin(_("Open Recent"), arrlen(goxel.recent_files))) {
             for (i = 0; i < arrlen(goxel.recent_files); i++) {
                 if (gui_menu_item(0, goxel.recent_files[i], true)) {
                     goxel_open_file(goxel.recent_files[i]);

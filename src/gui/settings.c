@@ -189,6 +189,7 @@ int gui_settings_popup(void *data)
         gui_text("Progs: %s/progs", sys_get_user_dir());
     } gui_section_end();
 
+#ifndef GOXEL_TOUCH_UI // Keyboard and mouse settings.
     if (gui_section_begin(_("Shortcuts"), GUI_SECTION_COLLAPSABLE_CLOSED)) {
         gui_columns(2);
         gui_separator();
@@ -210,6 +211,11 @@ int gui_settings_popup(void *data)
         }
     }
     gui_section_end();
+#else
+    (void)shortcut_callback;
+    (void)on_keymap;
+    (void)on_add_keymap_button;
+#endif
 
     gui_popup_bottom_begin();
     ret = gui_button(_("OK"), 0, 0);

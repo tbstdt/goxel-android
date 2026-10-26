@@ -34,6 +34,7 @@
  *   tap X Y                down + 3 frames + up + 3 frames.
  *   drag X0 Y0 X1 Y1 N     One finger drag in N steps.
  *   back                   Android back button.
+ *   menu PATH              Click a touch menu item, e.g. menu File/Save As
  *   shot PATH              Save the current frame.
  *   log TEXT               Print TEXT.
  */
@@ -192,6 +193,12 @@ static bool run_line(char *line)
         }
         g.fingers[0].down = false;
         frames(2);
+    } else if (strcmp(cmd, "menu") == 0) {
+        // The rest of the line, without the new line.
+        snprintf(arg, sizeof(arg), "%s", line + 5);
+        arg[strcspn(arg, "\r\n")] = '\0';
+        gui_touch_menu_simulate(arg);
+        frames(4);
     } else if (strcmp(cmd, "back") == 0) {
         gui_on_back();
         frames(3);
