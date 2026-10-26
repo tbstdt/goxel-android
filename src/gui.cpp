@@ -608,6 +608,9 @@ bool gui_view_cube(float x, float y, float w, float h)
 {
     ImGuiIO& io = ImGui::GetIO();
     bool ret = false;
+    // Set while a touch / click that started on the cube is down.
+    static bool pressed = false;
+    float rz, rx;
     ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
     camera_t *camera = goxel.image->active_camera;
     float view[4][4];
@@ -650,10 +653,28 @@ bool gui_view_cube(float x, float y, float w, float h)
            ImGui::GetWindowPos(),
            ImVec2(w, h), 0x0);
 
-    ret = memcmp(view, view_prev, sizeof(view_prev)) != 0;
-    if (ret) {
-        mat4_invert(view, view);
-        mat4_mul(yup2zup, view, camera->mat);
+    if (ImGui::IsMouseClicked(0) &&
+            ImRect(ImVec2(x, y), ImVec2(x + w, y + h)).Contains(io.MousePos))
+        pressed = true;
+    if (!io.MouseDown[0]) pressed = false;
+
+    // Dragging the cube: use our own turntable rotation, ImGuizmo one
+    // shakes when looking from the top or the bottom.  We only keep the
+    // ImGuizmo click on a face animation, that happens after the release.
+    if (pressed) {
+        if (ImGui::IsMouseDragging(0, 4) && !ImGui::IsMouseClicked(0) &&
+                (io.MouseDelta.x || io.MouseDelta.y)) {
+            rz = -io.MouseDelta.x * 0.01f;
+            rx = -io.MouseDelta.y * 0.01f;
+            camera_turntable(camera, rz, rx);
+            ret = true;
+        }
+    } else {
+        ret = memcmp(view, view_prev, sizeof(view_prev)) != 0;
+        if (ret) {
+            mat4_invert(view, view);
+            mat4_mul(yup2zup, view, camera->mat);
+        }
     }
     ImGui::End();
     ImGui::PopStyleColor();
