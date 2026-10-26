@@ -24,6 +24,16 @@ static int gui_quit_popup(void *data)
     gui_text(_("File Has Unsaved Changes"));
 
     gui_row_begin(0);
+#ifdef GOXEL_TOUCH_UI
+    // No window close button on a phone: offer to save from here.
+    if (gui_button(_("Save"), 0, 0)) {
+        action_exec2(ACTION_save);
+        if (image_get_key(goxel.image) == goxel.image->saved_key) {
+            goxel.quit = true;
+            ret = 1;
+        }
+    }
+#endif
     if (gui_button(_("Quit"), 0, 0)) {
         goxel.quit = true;
         ret = 1;

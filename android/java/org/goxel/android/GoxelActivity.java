@@ -11,6 +11,7 @@ package org.goxel.android;
 import android.app.NativeActivity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
@@ -19,17 +20,27 @@ import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.HashMap;
+import java.util.Map;
 
 /*
  * Thin wrapper around NativeActivity: everything runs in libgoxel.so, this
  * class only provides the services the NDK doesn't have (Storage Access
  * Framework file picker, soft keyboard, unicode of key events).
+ *
+ * Documents: goxel works with plain file paths, but on android the user
+ * picks documents (content URIs).  Each picked document gets a persistent
+ * local copy (files/docs/<hash>/<name>) that goxel reads and writes, and we
+ * remember its URI (with a persisted permission).  Whenever goxel writes
+ * the local copy (save, export...), syncDocuments copies it back to the
+ * document.  Since the local paths are stable, goxel recent files work.
  */
 public class GoxelActivity extends NativeActivity {
     private static final String TAG = "goxel";
@@ -43,15 +54,19 @@ public class GoxelActivity extends NativeActivity {
 
     private static native void nativeDialogResult(String path);
 
-    // Document picked in the last save dialog, and the temporary file goxel
-    // writes into before we copy it there.
-    private Uri pendingSaveUri;
-    private File pendingSaveFile;
+    // Local copy path -> document URI, persisted in the preferences.
+    private SharedPreferences docs;
+    // Local copy path -> "mtime:size" of the local copy when last synced.
+    private final Map<String, String> synced = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         hideSystemUi();
+        docs = getSharedPreferences("documents", MODE_PRIVATE);
+        // Assume the local copies are in sync with the documents.
+        for (String path : docs.getAll().keySet())
+            synced.put(path, fileState(new File(path)));
     }
 
     @Override
@@ -81,6 +96,9 @@ public class GoxelActivity extends NativeActivity {
                 // can't filter here.
                 intent.setType(save ? "application/octet-stream" : "*/*");
                 if (save) intent.putExtra(Intent.EXTRA_TITLE, defaultName);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
+                                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
                 try {
                     startActivityForResult(intent, save ? REQ_SAVE : REQ_OPEN);
                 } catch (Exception e) {
@@ -102,43 +120,121 @@ public class GoxelActivity extends NativeActivity {
             return;
         }
         Uri uri = data.getData();
-        String name = getDisplayName(uri);
+        takePermission(uri);
+        File file = localFile(uri);
         try {
             if (request == REQ_OPEN) {
-                File dir = new File(getCacheDir(), "open");
-                dir.mkdirs();
-                File file = new File(dir, name);
                 copy(getContentResolver().openInputStream(uri),
                      new FileOutputStream(file));
-                nativeDialogResult(file.getAbsolutePath());
             } else {
-                File dir = new File(getCacheDir(), "save");
-                dir.mkdirs();
-                pendingSaveUri = uri;
-                pendingSaveFile = new File(dir, name);
-                pendingSaveFile.delete();
-                nativeDialogResult(pendingSaveFile.getAbsolutePath());
+                // goxel will write it, then syncDocuments copies it.
+                file.delete();
             }
+            setDocument(file, uri);
+            nativeDialogResult(file.getAbsolutePath());
         } catch (Exception e) {
             Log.e(TAG, "File dialog error", e);
             nativeDialogResult(null);
         }
     }
 
-    /* Called from native thread, once goxel wrote the file to save. */
-    public void flushSave() {
-        if (pendingSaveUri == null) return;
+    private void takePermission(Uri uri) {
+        int flags = Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
         try {
-            if (pendingSaveFile.exists()) {
-                copy(new FileInputStream(pendingSaveFile),
-                     getContentResolver().openOutputStream(pendingSaveUri, "wt"));
-                pendingSaveFile.delete();
+            getContentResolver().takePersistableUriPermission(uri, flags);
+        } catch (Exception e) {
+            // Some providers only give read access.
+            try {
+                getContentResolver().takePersistableUriPermission(
+                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (Exception e2) {
+                Log.w(TAG, "No persistable permission for " + uri);
+            }
+        }
+    }
+
+    // Stable local copy path for a document.
+    private File localFile(Uri uri) {
+        File dir = new File(new File(getFilesDir(), "docs"),
+                            Integer.toHexString(uri.toString().hashCode()));
+        dir.mkdirs();
+        return new File(dir, getDisplayName(uri));
+    }
+
+    private void setDocument(File file, Uri uri) {
+        String path = file.getAbsolutePath();
+        docs.edit().putString(path, uri.toString()).apply();
+        synchronized (synced) {
+            synced.put(path, fileState(file));
+        }
+    }
+
+    private static String fileState(File file) {
+        if (!file.exists()) return "";
+        return file.lastModified() + ":" + file.length();
+    }
+
+    /*
+     * Called from native thread, every frame: copy the local copies that
+     * changed since the last sync back to their documents.
+     */
+    public void syncDocuments() {
+        synchronized (synced) {
+            for (Map.Entry<String, String> e : synced.entrySet()) {
+                File file = new File(e.getKey());
+                String state = fileState(file);
+                if (state.isEmpty() || state.equals(e.getValue())) continue;
+                e.setValue(state);
+                String uri = docs.getString(e.getKey(), null);
+                if (uri == null) continue;
+                try {
+                    copy(new FileInputStream(file),
+                         getContentResolver().openOutputStream(
+                                 Uri.parse(uri), "wt"));
+                    Log.i(TAG, "Synced " + file + " to " + uri);
+                } catch (Exception ex) {
+                    Log.e(TAG, "Cannot write " + uri, ex);
+                    toast("Cannot write " + file.getName() + ": " +
+                          ex.getMessage());
+                }
+            }
+        }
+    }
+
+    /*
+     * Called from native thread before opening a file (e.g. from the
+     * recent files): refresh the local copy from its document, in case it
+     * was modified by another app.
+     */
+    public void refreshDocument(String path) {
+        String uri = docs.getString(path, null);
+        if (uri == null) return;
+        File file = new File(path);
+        synchronized (synced) {
+            // Never overwrite changes we could not write to the document.
+            String state = synced.get(path);
+            if (state != null && !state.equals(fileState(file))) return;
+        }
+        try {
+            copy(getContentResolver().openInputStream(Uri.parse(uri)),
+                 new FileOutputStream(file));
+            synchronized (synced) {
+                synced.put(path, fileState(file));
             }
         } catch (Exception e) {
-            Log.e(TAG, "Cannot save file", e);
+            // Use the local copy.
+            Log.w(TAG, "Cannot read " + uri + ", using local copy", e);
         }
-        pendingSaveUri = null;
-        pendingSaveFile = null;
+    }
+
+    private void toast(final String msg) {
+        runOnUiThread(new Runnable() {
+            public void run() {
+                Toast.makeText(GoxelActivity.this, msg,
+                               Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     /* Called from native thread. */

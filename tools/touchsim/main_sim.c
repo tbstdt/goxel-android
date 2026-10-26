@@ -25,12 +25,15 @@
  *
  * Script commands (one per line, coordinates in dp, '#' for comments):
  *   size W H SCALE         Screen size in pixels and density scale.
+ *   autosave_dir DIR       Enable autosave in DIR (like android).
+ *   autosave               Force an autosave (app going to background).
  *   frames N               Render N frames without changing the inputs.
  *   down ID X Y            Finger ID (0-3) touches the screen.
  *   move ID X Y            Finger ID moves.
  *   up ID                  Finger ID is lifted.
  *   tap X Y                down + 3 frames + up + 3 frames.
  *   drag X0 Y0 X1 Y1 N     One finger drag in N steps.
+ *   back                   Android back button.
  *   shot PATH              Save the current frame.
  *   log TEXT               Print TEXT.
  */
@@ -51,6 +54,7 @@ static struct {
         float   pos[2];
         bool    down;
     } fingers[4];
+    char        autosave_dir[1024];
 } g = {.w = 1080, .h = 2400, .scale = 2.625};
 
 static void sim_log(void *user, const char *msg)
@@ -149,7 +153,11 @@ static bool run_line(char *line)
     float x, y, x1, y1, scale;
 
     if (line[0] == '#' || sscanf(line, "%31s", cmd) != 1) return true;
-    if (strcmp(cmd, "size") == 0) {
+    if (strcmp(cmd, "autosave_dir") == 0) {
+        sscanf(line, "%*s %1023s", g.autosave_dir);
+    } else if (strcmp(cmd, "autosave") == 0) {
+        autosave(true);
+    } else if (strcmp(cmd, "size") == 0) {
         if (sscanf(line, "%*s %d %d %f", &g.w, &g.h, &scale) == 3)
             g.scale = scale;
     } else if (strcmp(cmd, "frames") == 0) {
@@ -184,6 +192,13 @@ static bool run_line(char *line)
         }
         g.fingers[0].down = false;
         frames(2);
+    } else if (strcmp(cmd, "back") == 0) {
+        gui_on_back();
+        frames(3);
+        if (goxel.quit) {
+            printf("quit\n");
+            goxel.quit = false;
+        }
     } else if (strcmp(cmd, "shot") == 0) {
         if (sscanf(line, "%*s %1023s", arg) == 1) screenshot(arg);
     } else if (strcmp(cmd, "log") == 0) {
@@ -219,9 +234,14 @@ int main(int argc, char **argv)
         lineno++;
         // The size command must come before the first frame.
         if (!initialized && strncmp(line, "size", 4) != 0 &&
+                strncmp(line, "autosave_dir", 12) != 0 &&
                 line[0] != '#' && line[0] != '\n') {
             if (!egl_init()) return 1;
             goxel_init();
+            if (g.autosave_dir[0]) {
+                autosave_init(g.autosave_dir);
+                autosave_check_restore();
+            }
             frames(2);
             initialized = true;
         }

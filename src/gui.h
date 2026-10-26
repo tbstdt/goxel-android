@@ -153,6 +153,9 @@ bool gui_is_item_deactivated(void);
 
 void gui_query_quit(void);
 
+// Back button (android): close the top most popup / panel, or query quit.
+void gui_on_back(void);
+
 enum {
     GUI_POPUP_FULL      = 1 << 0,
     GUI_POPUP_RESIZE    = 1 << 1,

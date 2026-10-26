@@ -31,6 +31,22 @@ Touch controls
 
 Three fingers gestures are not used: Android reserves them (screenshot).
 
+Back button: closes the open popup, menu or panel; on the main screen asks
+to quit (Save / Quit / Cancel when there are unsaved changes).
+
+
+Files
+-----
+
+Files are opened and saved with the system file picker.  Each document
+gets a local copy in the app storage, and every time goxel writes it (Save,
+Save As, Export, Overwrite export) it is copied back to the document.  Open
+Recent works, and refreshes the local copy from the document.
+
+Unsaved work is autosaved when the app goes to the background and every
+minute.  If Android kills the app, it proposes to restore it on the next
+start.
+
 
 Building the APK
 ----------------

@@ -654,6 +654,12 @@ void goxel_render_to_buf(uint8_t *buf, int w, int h, int bpp);
 void goxel_open_file(const char *path);
 
 void save_to_file(const image_t *img, const char *path);
+
+// Autosave (see autosave.c), for platforms that can kill the app.
+void autosave_init(const char *dir);
+void autosave(bool force); // Unless forced, only once per minute.
+void autosave_delete(void);
+void autosave_check_restore(void);
 int load_from_file(const char *path, bool replace);
 
 // Iter info of a gox file, without actually reading it.

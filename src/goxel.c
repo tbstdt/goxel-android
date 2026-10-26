@@ -685,6 +685,12 @@ int goxel_iter(const inputs_t *inputs)
     for (i = 0; i < (int)ARRAY_SIZE(inputs2.touches); i++) {
         inputs2.touches[i].pos[1] =
             inputs->window_size[1] - inputs->touches[i].pos[1];
+        // On touch screens there is no hover: without a finger down, don't
+        // show the tool preview where the last touch was.
+        if (DEFINED(GOXEL_TOUCH_UI) && !inputs->touches[i].down[0]) {
+            inputs2.touches[i].pos[0] = -1;
+            inputs2.touches[i].pos[1] = -1;
+        }
         // Move the mouse outside the viewport if the UI captures it.
         if (gui_want_capture_mouse()) {
             inputs2.touches[i].pos[0] = -1;
@@ -1888,6 +1894,7 @@ static int unsaved_change_popup(void *data)
 
 void goxel_open_file(const char *path)
 {
+    if (path) sys_on_open_file(path);
     if (image_get_key(goxel.image) == goxel.image->saved_key) {
         if (!path) {
             goxel_reset();

@@ -29,6 +29,8 @@
 #include "goxel.h"
 
 #include <EGL/egl.h>
+#include <errno.h>
+#include <unistd.h>
 #include <android/log.h>
 #include <android_native_app_glue.h>
 #include <jni.h>
@@ -65,7 +67,7 @@ static struct {
     atomic_bool dialog_done;
     char        dialog_path[1024];
     bool        dialog_ok;
-    bool        pending_save;
+
 } g = {
     .display = EGL_NO_DISPLAY,
     .surface = EGL_NO_SURFACE,
@@ -194,7 +196,6 @@ static int key_from_android(int32_t code)
         return '0' + code - AKEYCODE_0;
     switch (code) {
     case AKEYCODE_SPACE:        return ' ';
-    case AKEYCODE_BACK:
     case AKEYCODE_ESCAPE:       return KEY_ESCAPE;
     case AKEYCODE_ENTER:        return KEY_ENTER;
     case AKEYCODE_TAB:          return KEY_TAB;
@@ -329,6 +330,10 @@ static int32_t on_key_event(const AInputEvent *event)
 
     if (code == AKEYCODE_VOLUME_UP || code == AKEYCODE_VOLUME_DOWN)
         return 0;
+    if (code == AKEYCODE_BACK) {
+        if (action == AKEY_EVENT_ACTION_UP) gui_on_back();
+        return 1;
+    }
     if (action == AKEY_EVENT_ACTION_DOWN) {
         unicode = get_unicode_char(code, AKeyEvent_getMetaState(event));
         if (unicode >= 32 && g.nb_chars < ARRAY_SIZE(g.chars))
@@ -376,6 +381,11 @@ static void on_app_cmd(struct android_app *app, int32_t cmd)
     case APP_CMD_PAUSE:
         g.resumed = false;
         release_all_slots();
+        // Android can kill us any time once in the background.
+        if (g.goxel_initialized) autosave(true);
+        break;
+    case APP_CMD_SAVE_STATE:
+        if (g.goxel_initialized) autosave(true);
         break;
     case APP_CMD_CONFIG_CHANGED:
         update_scale();
@@ -444,23 +454,30 @@ static bool open_dialog(
 
     pthread_mutex_lock(&g.dialog_mutex);
     if (g.dialog_ok) {
+        // A local copy of the document, see GoxelActivity.
         snprintf(buf, buf_size, "%s", g.dialog_path);
-        // The java side gave us a temporary file, it will be copied to
-        // the final document after goxel wrote it.
-        if (flags & 1) g.pending_save = true;
     }
     pthread_mutex_unlock(&g.dialog_mutex);
     return g.dialog_ok;
 }
 
-static void flush_pending_save(void)
+// Copy the local copies goxel wrote back to their documents.
+static void sync_documents(void)
 {
-    JNIEnv *env;
-    if (!g.pending_save) return;
-    g.pending_save = false;
-    env = get_env();
+    static jmethodID method = NULL;
+    JNIEnv *env = get_env();
+    if (!method) method = get_method(env, "syncDocuments", "()V");
+    (*env)->CallVoidMethod(env, g.app->activity->clazz, method);
+}
+
+static void on_open_file(void *user, const char *path)
+{
+    JNIEnv *env = get_env();
+    jstring jpath = (*env)->NewStringUTF(env, path);
     (*env)->CallVoidMethod(env, g.app->activity->clazz,
-                           get_method(env, "flushSave", "()V"));
+            get_method(env, "refreshDocument", "(Ljava/lang/String;)V"),
+            jpath);
+    (*env)->DeleteLocalRef(env, jpath);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -499,7 +516,8 @@ static void render_frame(inputs_t *inputs)
     GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
     goxel_iter(inputs);
     goxel_render(inputs);
-    flush_pending_save();
+    sync_documents();
+    autosave(false);
     eglSwapBuffers(g.display, g.surface);
 }
 
@@ -517,6 +535,7 @@ void android_main(struct android_app *app)
     sys_callbacks.log = android_log;
     sys_callbacks.open_dialog = open_dialog;
     sys_callbacks.show_keyboard = show_keyboard;
+    sys_callbacks.on_open_file = on_open_file;
     // goxel stores its settings in $HOME/.config/goxel.
     snprintf(home, sizeof(home), "%s", app->activity->internalDataPath);
     setenv("HOME", home, 1);
@@ -528,9 +547,13 @@ void android_main(struct android_app *app)
         if (!g.goxel_initialized) {
             goxel_init();
             g.goxel_initialized = true;
+            autosave_init(g.app->activity->internalDataPath);
+            autosave_check_restore();
         }
         render_frame(&inputs);
         if (goxel.quit) {
+            // The user chose to quit: nothing to restore.
+            autosave_delete();
             ANativeActivity_finish(app->activity);
             goxel.quit = false;
         }

@@ -553,6 +553,33 @@ static int check_action_shortcut(action_t *action, void *user)
     return 0;
 }
 
+// Set by gui_on_back, handled during the next frame.
+static bool g_back_requested = false;
+
+void gui_on_back(void)
+{
+    g_back_requested = true;
+}
+
+// Close the top most thing (popup, menu, panel), or ask to quit.
+static void handle_back(void)
+{
+    ImGuiContext& g = *GImGui;
+    if (!g_back_requested) return;
+    // Goxel modal popups are closed in render_popups, as if canceled.
+    if (gui->popup_count) return;
+    g_back_requested = false;
+    if (g.OpenPopupStack.Size) {
+        ImGui::ClosePopupToLevel(g.OpenPopupStack.Size - 1, true);
+        return;
+    }
+    if (goxel.gui.current_panel) {
+        goxel.gui.current_panel = 0;
+        return;
+    }
+    gui_query_quit();
+}
+
 static void render_popups(int index)
 {
     int r;
@@ -587,7 +614,12 @@ static void render_popups(int index)
 
     if (ImGui::BeginPopupModal(popup->title, NULL, flags)) {
         typeof(popup->func) func = popup->func;
-        if ((r = func(popup->data))) {
+        r = func(popup->data);
+        if (!r && g_back_requested && index == gui->popup_count - 1) {
+            g_back_requested = false;
+            r = 2; // Same as a cancel button.
+        }
+        if (r) {
             ImGui::CloseCurrentPopup();
             gui->popup_count--;
             popup->title = NULL;
@@ -788,6 +820,7 @@ static void gui_iter(const inputs_t *inputs)
     ImGui::NewFrame();
     ImGuizmo::BeginFrame();
 
+    handle_back();
     gui_app();
     render_popups(0);
 
@@ -1826,6 +1859,7 @@ void gui_open_popup(const char *title, int flags, void *data,
                     int (*func)(void *data))
 {
     typeof(gui->popup[0]) *popup;
+    gui_create(); // We can open a popup before the first frame.
     popup = &gui->popup[gui->popup_count++];
     popup->title = title;
     popup->func = func;

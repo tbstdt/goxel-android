@@ -312,6 +312,12 @@ void sys_on_saved(const char *path)
     LOG_I("Saved %s", path);
 }
 
+void sys_on_open_file(const char *path)
+{
+    if (sys_callbacks.on_open_file)
+        sys_callbacks.on_open_file(sys_callbacks.user, path);
+}
+
 static int sys_get_path_(void *arg, const char *path)
 {
     char *buf = USER_GET(arg, 0);

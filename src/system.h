@@ -51,6 +51,9 @@ typedef struct {
                         const char *default_path_and_file,
                         int nb_filters, const char * const *filters,
                         const char *filters_desc);
+    // Called before a file is opened (e.g. from the recent files), so that
+    // the platform can refresh it.
+    void (*on_open_file)(void *user, const char *path);
 } sys_callbacks_t;
 extern sys_callbacks_t sys_callbacks;
 
@@ -182,6 +185,12 @@ const char *sys_get_save_path(const char *default_name,
  * Called after we saved a file
  */
 void sys_on_saved(const char *path);
+
+/*
+ * Function: sys_on_open_file
+ * Called before opening a file from its path (recent files).
+ */
+void sys_on_open_file(const char *path);
 
 const char *sys_open_file_dialog(const char *title,
                                  const char *default_path_and_file,
