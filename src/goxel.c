@@ -692,7 +692,7 @@ int goxel_iter(const inputs_t *inputs)
             // On touch screens the UI only knows it captured a touch one
             // frame after it started: abort the gestures that started in
             // the view during that frame.
-            if (DEFINED(__ANDROID__) && inputs->touches[i].down[0])
+            if (DEFINED(GOXEL_TOUCH_UI) && inputs->touches[i].down[0])
                 inputs2.touches_canceled = true;
         }
     }
@@ -928,7 +928,7 @@ static void update_keymaps_hints(void)
     char title[128];
     const char *msg = "";
 
-#ifdef __ANDROID__
+#ifdef GOXEL_TOUCH_UI
     return; // Mouse button hints make no sense on a touch screen.
 #endif
 

@@ -17,7 +17,7 @@
  */
 
 #ifndef GUI_HAS_SCROLLBARS
-#   ifdef __ANDROID__
+#   ifdef GOXEL_TOUCH_UI
 #       define GUI_HAS_SCROLLBARS 0 // Swipe to scroll instead.
 #   else
 #       define GUI_HAS_SCROLLBARS 1

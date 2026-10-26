@@ -30,7 +30,7 @@
 #endif
 
 #ifndef GUI_HAS_MENU
-#   ifdef __ANDROID__
+#   ifdef GOXEL_TOUCH_UI
 #       define GUI_HAS_MENU 0 // See gui_touch_menu_button.
 #   else
 #       define GUI_HAS_MENU 1
@@ -305,7 +305,7 @@ void gui_app(void)
     // Without the menu bar, the top bar is at the top: put the cube below.
     y = GUI_HAS_MENU ? item_height + 2 : y;
     gui_view_cube(goxel.gui.viewport[2] - 128, y, 128, 128);
-#ifdef __ANDROID__
+#ifdef GOXEL_TOUCH_UI
     // Drag this button to pan the view.
     if (goxel.show_pan_button) {
         gui_pan_button(goxel.gui.viewport[2] / 2 - 16,

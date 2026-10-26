@@ -176,7 +176,7 @@ int gui_settings_popup(void *data)
                     goxel.emulate_three_buttons_mouse);
             settings_save();
         }
-#ifdef __ANDROID__
+#ifdef GOXEL_TOUCH_UI
         if (gui_checkbox(_("Pan button"), &goxel.show_pan_button,
                          "Show a button to pan the view.")) {
             settings_save();

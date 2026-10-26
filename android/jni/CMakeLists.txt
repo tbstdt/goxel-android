@@ -19,7 +19,7 @@ target_include_directories(goxel PRIVATE
     ${ROOT}/ext_src ${ROOT}/ext_src/uthash ${ROOT}/ext_src/stb
     ${ROOT}/ext_src/xxhash ${ROOT}/ext_src/meshoptimizer)
 
-target_compile_definitions(goxel PRIVATE GLES2=1)
+target_compile_definitions(goxel PRIVATE GLES2=1 GOXEL_TOUCH_UI=1)
 target_compile_options(goxel PRIVATE
     -include ${ROOT}/src/config.h
     -Wall -Wno-unknown-pragmas -Wno-unknown-warning-option

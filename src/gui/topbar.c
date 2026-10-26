@@ -57,7 +57,7 @@ void gui_menu(void);
 void gui_top_bar(void)
 {
     gui_row_begin(0); {
-#ifdef __ANDROID__
+#ifdef GOXEL_TOUCH_UI
         // No menu bar on touch screens: the menu is behind this button.
         gui_touch_menu_button(gui_menu);
 #endif
