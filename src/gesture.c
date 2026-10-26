@@ -164,7 +164,9 @@ static void update_multi_touch(gesture_t *gest, const inputs_t *inputs)
             // from a three fingers pan to a two fingers rotation.
             gest->state = GESTURE_END;
             gest->wait_up = n > 0;
-            if (!gest->moved &&
+            // More than two fingers is likely a system gesture, and the
+            // touches might have been canceled: no tap.
+            if (!gest->moved && gest->max_touches == 2 &&
                     sys_get_time() - gest->start_time < TAP_MAX_TIME)
                 gest->tap = gest->max_touches;
             break;
@@ -295,6 +297,21 @@ int gesture_update(int nb, gesture_t *gestures[],
                 break;
             }
         }
+    }
+
+    if (inputs->touches_canceled) {
+        for (i = 0; i < nb; i++) {
+            gest = gestures[i];
+            if (gest->type == GESTURE_HOVER) continue;
+            if (gest->state == GESTURE_BEGIN ||
+                    gest->state == GESTURE_UPDATE) {
+                gest->state = GESTURE_END;
+                gest->tap = 0;
+                gest->callback(gest, user);
+            }
+            gest->state = GESTURE_FAILED;
+        }
+        return 0;
     }
 
     for (i = 0; i < nb; i++) {

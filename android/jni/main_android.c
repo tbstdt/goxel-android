@@ -55,6 +55,7 @@ static struct {
     } slots[4];
     float       hover_pos[2];
     float       wheel;
+    bool        touches_canceled;
     bool        keys[512];
     uint32_t    chars[16];
     int         nb_chars;
@@ -234,6 +235,7 @@ static void release_all_slots(void)
         memset(g.slots[i].down, 0, sizeof(g.slots[i].down));
         g.slots[i].id = -1;
     }
+    g.touches_canceled = true;
 }
 
 static int32_t on_motion_event(const AInputEvent *event)
@@ -481,6 +483,8 @@ static void render_frame(inputs_t *inputs)
     g.nb_chars = 0;
     inputs->mouse_wheel = g.wheel;
     g.wheel = 0;
+    inputs->touches_canceled = g.touches_canceled;
+    g.touches_canceled = false;
 
     for (i = 0; i < ARRAY_SIZE(g.slots); i++) {
         vec2_copy(g.slots[i].pos, inputs->touches[i].pos);

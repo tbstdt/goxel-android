@@ -23,7 +23,10 @@ debug key).
 - One finger on a voxel: use the current tool.
 - One finger on empty space: rotate the view.
 - Two fingers: drag to rotate, pinch to zoom.
-- Three fingers: pan.
-- Two fingers tap: undo.  Three fingers tap: redo.
+- Two fingers tap: undo.
 - View cube (top right): drag to rotate, tap a face to look at it.
+- Round button below the view cube: drag it to pan the view.
 - The menu is behind the hamburger button of the top bar.
+- Menus and panels scroll with a swipe.
+
+Three fingers gestures are not used: Android reserves them (screenshot).

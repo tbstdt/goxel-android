@@ -303,6 +303,10 @@ void gui_app(void)
          PANELS[PANEL_RENDER].detached);
 
     // Without the menu bar, the top bar is at the top: put the cube below.
-    gui_view_cube(goxel.gui.viewport[2] - 128,
-                  GUI_HAS_MENU ? item_height + 2 : y, 128, 128);
+    y = GUI_HAS_MENU ? item_height + 2 : y;
+    gui_view_cube(goxel.gui.viewport[2] - 128, y, 128, 128);
+#ifdef __ANDROID__
+    // Drag this button to pan the view.
+    gui_pan_button(goxel.gui.viewport[2] - 64 - 32, y + 128 + 8, 64);
+#endif
 }

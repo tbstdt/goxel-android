@@ -17,7 +17,11 @@
  */
 
 #ifndef GUI_HAS_SCROLLBARS
-#   define GUI_HAS_SCROLLBARS 1
+#   ifdef __ANDROID__
+#       define GUI_HAS_SCROLLBARS 0 // Swipe to scroll instead.
+#   else
+#       define GUI_HAS_SCROLLBARS 1
+#   endif
 #endif
 
 extern "C" {
@@ -656,6 +660,36 @@ bool gui_view_cube(float x, float y, float w, float h)
     return ret;
 }
 
+void gui_pan_button(float x, float y, float size)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImDrawList *draw_list;
+    ImVec2 center, uv0, uv1;
+    bool active;
+
+    ImGui::SetNextWindowSize(ImVec2(size, size));
+    ImGui::SetNextWindowPos(ImVec2(x, y));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::Begin("Pan", NULL, ImGuiWindowFlags_NoDecoration |
+                              ImGuiWindowFlags_NoBackground);
+    ImGui::InvisibleButton("##pan", ImVec2(size, size));
+    active = ImGui::IsItemActive();
+    if (active && (io.MouseDelta.x || io.MouseDelta.y))
+        goxel_pan_view(goxel.gui.viewport, io.MouseDelta.x, io.MouseDelta.y);
+
+    draw_list = ImGui::GetWindowDrawList();
+    center = ImGui::GetItemRectMin() + ImVec2(size / 2, size / 2);
+    draw_list->AddCircleFilled(center, size / 2,
+            ImGui::GetColorU32(COLOR(WIDGET, INNER, active)));
+    uv0 = get_icon_uv(ICON_TOOL_MOVE);
+    uv1 = uv0 + ImVec2(1. / 8, 1. / 8);
+    draw_list->AddImage((intptr_t)g_tex_icons->tex,
+                        center - ImVec2(16, 16), center + ImVec2(16, 16),
+                        uv0, uv1, get_icon_color(ICON_TOOL_MOVE, active));
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
 static void gui_iter(const inputs_t *inputs)
 {
     gui_init();
@@ -828,6 +862,48 @@ void gui_row_end(void)
     ImGui::EndGroup();
     gui->is_row--;
     gui->item_size = 0;
+}
+
+/*
+ * Swipe to scroll the current window (touch screens without scrollbars).
+ * Once the finger moved enough along the scroll direction, the active item
+ * is released so that buttons don't get triggered.
+ * Return true if the window is being scrolled.
+ */
+bool gui_pan_scroll_behavior(int dir)
+{
+    static ImGuiID scrolling_id = 0;
+    ImGuiContext& g = *GImGui;
+    ImGuiWindow *win = g.CurrentWindow;
+    ImGuiIO& io = ImGui::GetIO();
+    ImVec2 drag;
+    float along, across;
+
+    if (!io.MouseDown[0]) {
+        if (scrolling_id == win->ID) scrolling_id = 0;
+        return false;
+    }
+    if (scrolling_id == win->ID) {
+        if (dir == 0)
+            ImGui::SetScrollX(win, win->Scroll.x - io.MouseDelta.x);
+        else
+            ImGui::SetScrollY(win, win->Scroll.y - io.MouseDelta.y);
+        return true;
+    }
+    if (scrolling_id || win->ScrollMax[dir] <= 0) return false;
+    if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows |
+                                ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
+        return false;
+    if (!ImGui::IsMouseDragging(0, 12)) return false;
+    drag = ImGui::GetMouseDragDelta(0);
+    along = fabsf(dir == 0 ? drag.x : drag.y);
+    across = fabsf(dir == 0 ? drag.y : drag.x);
+    // Drags across the scroll direction are left to the widgets (sliders,
+    // number inputs...).
+    if (along < across * 1.5f) return false;
+    scrolling_id = win->ID;
+    ImGui::ClearActiveID();
+    return true;
 }
 
 int gui_window_begin(const char *label, float x, float y, float w, float h,
@@ -1838,29 +1914,26 @@ void gui_menu_bar_end(void)
 }
 
 
-// Touch menu state: when set, the top level menus are rendered as
-// collapsing headers instead of popup menus.
+// Touch menu state: when set, the menus are rendered as collapsible
+// sections and the items as full width buttons.
 static struct {
     bool active;
     int  depth;
-    bool is_header[8];
 } g_touch_menu = {};
 
 bool gui_menu_begin(const char *label, bool enabled)
 {
-    bool header, ret;
+    bool ret;
     if (!g_touch_menu.active)
         return ImGui::BeginMenu(label, enabled);
-    header = g_touch_menu.depth == 0;
-    if (header) {
-        ImGui::BeginDisabled(!enabled);
+    ImGui::BeginDisabled(!enabled);
+    if (g_touch_menu.depth == 0)
         ret = ImGui::CollapsingHeader(label);
-        ImGui::EndDisabled();
-    } else {
-        ret = ImGui::BeginMenu(label, enabled);
-    }
-    if (ret && g_touch_menu.depth < (int)ARRAY_SIZE(g_touch_menu.is_header))
-        g_touch_menu.is_header[g_touch_menu.depth++] = header;
+    else
+        ret = ImGui::TreeNodeEx(label, ImGuiTreeNodeFlags_Framed |
+                                       ImGuiTreeNodeFlags_SpanAvailWidth);
+    ImGui::EndDisabled();
+    if (ret) g_touch_menu.depth++;
     return ret;
 }
 
@@ -1871,52 +1944,72 @@ void gui_menu_end(void)
         return;
     }
     if (g_touch_menu.depth == 0) return;
-    if (!g_touch_menu.is_header[--g_touch_menu.depth])
-        ImGui::EndMenu();
+    g_touch_menu.depth--;
+    if (g_touch_menu.depth > 0) ImGui::TreePop();
+}
+
+bool gui_menu_item(int action, const char *label, bool enabled)
+{
+    const action_t *a = NULL;
+    bool ret;
+    if (action) {
+        a = action_get(action, true);
+        assert(a);
+    }
+    if (g_touch_menu.active) {
+        ImGui::BeginDisabled(!enabled);
+        ret = ImGui::Button(label, ImVec2(-FLT_MIN, 0));
+        ImGui::EndDisabled();
+        if (ret) ImGui::CloseCurrentPopup();
+    } else {
+        ret = ImGui::MenuItem(label, a ? a->shortcut : NULL, false, enabled);
+    }
+    if (ret && a) action_exec(a);
+    return ret;
 }
 
 void gui_touch_menu_button(void (*menu_fn)(void))
 {
     bool v = false;
     ImGuiIO& io = ImGui::GetIO();
+    ImVec4 bg = COLOR(MENU, BACKGROUND, false);
+    ImVec4 item = COLOR(WIDGET, INNER, false);
 
     if (gui_selectable_icon(_("Menu"), &v, ICON_MENU))
         ImGui::OpenPopup("##touch_menu");
 
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetItemRectMin().x,
                                    ImGui::GetItemRectMax().y + 4));
+    ImGui::SetNextWindowSize(ImVec2(min(360.0f, io.DisplaySize.x - 16), 0));
     ImGui::SetNextWindowSizeConstraints(
-            ImVec2(min(280.0f, io.DisplaySize.x - 16), 0),
-            ImVec2(io.DisplaySize.x - 16, io.DisplaySize.y * 0.8f));
-    ImGui::PushStyleColor(ImGuiCol_PopupBg, COLOR(MENU, BACKGROUND, false));
+            ImVec2(0, 0), ImVec2(FLT_MAX, io.DisplaySize.y * 0.8f));
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, bg);
     ImGui::PushStyleColor(ImGuiCol_Text, COLOR(MENU, TEXT, false));
-    // Big items, easy to hit with a finger.
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12, 12));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 14));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12, 12));
-    if (ImGui::BeginPopup("##touch_menu")) {
+    ImGui::PushStyleColor(ImGuiCol_Button, item);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, item);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, color_lighten(item));
+    ImGui::PushStyleColor(ImGuiCol_Header, color_lighten(bg));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, color_lighten(bg));
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, color_lighten(item));
+    ImGui::PushStyleColor(ImGuiCol_Border, COLOR(WIDGET, OUTLINE, false));
+    // Big items with visible borders, easy to hit with a finger.
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(14, 14));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 8));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, 10));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6);
+    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0.5));
+    ImGui::PushStyleVar(ImGuiStyleVar_IndentSpacing, 16);
+    if (ImGui::BeginPopup("##touch_menu", ImGuiWindowFlags_NoScrollbar)) {
         g_touch_menu.active = true;
         g_touch_menu.depth = 0;
         menu_fn();
         g_touch_menu.active = false;
+        gui_pan_scroll_behavior(1);
         ImGui::EndPopup();
     }
-    ImGui::PopStyleVar(3);
-    ImGui::PopStyleColor(2);
-}
-
-bool gui_menu_item(int action, const char *label, bool enabled)
-{
-    const action_t *a = NULL;
-    if (action) {
-        a = action_get(action, true);
-        assert(a);
-    }
-    if (ImGui::MenuItem(label, a ? a->shortcut : NULL, false, enabled)) {
-        if (a) action_exec(a);
-        return true;
-    }
-    return false;
+    ImGui::PopStyleVar(7);
+    ImGui::PopStyleColor(9);
 }
 
 void gui_tooltip(const char *str)

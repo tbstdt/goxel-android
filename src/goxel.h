@@ -612,6 +612,9 @@ void goxel_render_export_view(const float viewport[4]);
 // Called by the gui when the mouse hover a 3D view.
 // XXX: change the name since we also call it when the mouse get out of
 // the view.
+// Move the camera by a screen delta (touch screens pan button).
+void goxel_pan_view(const float viewport[4], float dx, float dy);
+
 void goxel_mouse_in_view(const float viewport[4], const inputs_t *inputs,
                          bool capture_keys);
 

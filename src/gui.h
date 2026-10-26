@@ -187,6 +187,9 @@ bool gui_menu_item(int action, const char *label, bool enabled);
 
 void gui_tooltip(const char *str);
 
+// Round button that pans the view when dragged (touch screens).
+void gui_pan_button(float x, float y, float size);
+
 bool gui_view_cube(float x, float y, float w, float h);
 
 /*

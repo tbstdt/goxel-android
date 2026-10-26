@@ -68,6 +68,9 @@ typedef struct inputs
     touch_t     touches[4];
     float       mouse_wheel;
     int         framebuffer; // Screen framebuffer
+    // Set when the system canceled the touches (e.g. a system gesture):
+    // the pending gestures are aborted instead of triggered.
+    bool        touches_canceled;
 
     // Screen safe margins, used for iOS only.
     margins_t safe_margins;
