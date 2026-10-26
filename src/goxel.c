@@ -376,6 +376,7 @@ static int on_pan(const gesture_t *gest, void *user);
 static int on_zoom(const gesture_t *gest, void *user);
 static int on_rotate(const gesture_t *gest, void *user);
 static int on_hover(const gesture_t *gest, void *user);
+static int on_pinch(const gesture_t *gest, void *user);
 
 static void goxel_init_sound()
 {
@@ -470,6 +471,7 @@ void goxel_init(void)
     goxel_add_gesture(GESTURE_HOVER, 0, on_hover);
     goxel_add_gesture(GESTURE_DRAG, GESTURE_LMB, on_drag_rotate);
     goxel_add_gesture(GESTURE_DRAG, GESTURE_LMB, on_drag);
+    goxel_add_gesture(GESTURE_PINCH, 0, on_pinch);
 }
 
 void goxel_update_keymaps(void)
@@ -840,6 +842,37 @@ static int on_zoom(const gesture_t *gest, void *user)
                                 goxel_get_layers_volume(goxel.image), p, n)) {
         camera_set_target(camera, p);
     }
+    return 0;
+}
+
+/*
+ * Two fingers gesture (touch screens): pan and pinch zoom.
+ */
+static int on_pinch(const gesture_t *gest, void *user)
+{
+    static float start_dist;
+    float wdelta[3], odelta[3], dist;
+    camera_t *camera = get_camera();
+
+    if (gest->state == GESTURE_BEGIN) {
+        mat4_copy(camera->mat, goxel.move_origin.camera_mat);
+        vec2_copy(gest->pos, goxel.move_origin.pos);
+        start_dist = camera->dist;
+    }
+
+    vec3_set(wdelta, gest->pos[0] - goxel.move_origin.pos[0],
+                     gest->pos[1] - goxel.move_origin.pos[1], 0);
+    unproject_delta(wdelta, mat4_identity,
+                    camera->proj_mat, gest->viewport, odelta);
+    vec3_imul(odelta, 2);
+    if (!camera->ortho)
+        vec3_imul(odelta, start_dist);
+    mat4_translate(goxel.move_origin.camera_mat, -odelta[0], -odelta[1], 0,
+                   camera->mat);
+
+    dist = start_dist / max(gest->pinch, 0.01f);
+    mat4_itranslate(camera->mat, 0, 0, -(start_dist - dist));
+    camera->dist = dist;
     return 0;
 }
 

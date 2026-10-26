@@ -727,13 +727,19 @@ static void a_open(void)
 {
     char default_save_path[1024];
     const char *path;
-    const char *filters[] = {"*.gox", NULL};
+    const char *filters[] = {"*.gox", "*.vox", NULL};
 
     get_default_save_path(default_save_path, sizeof(default_save_path));
-    path = sys_open_file_dialog("Open", default_save_path, filters, "gox");
+    path = sys_open_file_dialog("Open", default_save_path, filters,
+                                "gox, vox");
     if (!path) return;
     image_delete(goxel.image);
     goxel.image = image_new();
+    // Other formats (vox) are imported into the new empty image.
+    if (!str_endswith(path, ".gox")) {
+        goxel_import_file(path, NULL);
+        return;
+    }
     load_from_file(path, true);
     goxel_add_recent_file(path);
 }
