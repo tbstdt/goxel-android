@@ -1,6 +1,55 @@
+Goxel for Android (unofficial port)
+===================================
 
-Goxel
-=====
+This is an unofficial Android port of [Goxel](https://github.com/guillaumechereau/goxel),
+the open source voxel editor by Guillaume Chereau.
+
+It is built from the desktop GPL-3 code: GLFW is replaced by a
+NativeActivity + EGL backend, file dialogs use the system file picker, and
+the camera is controlled with touch gestures. It is **not** the official
+Goxel app from Google Play (that one is built from a separate, closed
+mobile branch) and is not affiliated with the Goxel author.
+
+Status: early work in progress. The editor runs, but the interface is still
+the desktop one and is not adapted to phone screens yet.
+
+Development happens on the `dev` branch.
+
+
+Touch controls
+--------------
+
+- One finger on a voxel: use the current tool.
+- One finger on empty space: rotate the view.
+- Two fingers: pan, pinch to zoom.
+
+
+Building the APK
+----------------
+
+No gradle: [`android/build.sh`](android/build.sh) builds the APK directly
+with the Android SDK tools.
+
+Requirements: JDK 17, Android SDK with `platforms;android-34`,
+`build-tools;34.0.0`, `ndk;26.3.11579264`, `cmake;3.22.1`, and `zip`.
+
+    ANDROID_HOME=~/android/sdk JAVA_HOME=~/android/jdk android/build.sh
+
+Output: `android/build/goxel.apk` (arm64-v8a + armeabi-v7a, signed with a
+local debug key). See [android/README.md](android/README.md) for details on
+the port layout.
+
+
+Licence
+-------
+
+Like upstream Goxel, this port is released under the GNU GPL3 licence.
+Changes in this fork are not covered by the upstream CLA.
+
+
+
+Original Goxel README
+====================
 
 Version 0.15.1
 
