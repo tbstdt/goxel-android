@@ -858,7 +858,8 @@ static int on_zoom(const gesture_t *gest, void *user)
 
 /*
  * Two fingers gesture (touch screens): drag to rotate, pinch to zoom, tap
- * to undo.  Three fingers are ignored: android uses them for system
+ * to undo.  Lifting one of the two fingers continues the rotation with the
+ * other one.  Three fingers are ignored: android uses them for system
  * gestures (screenshot).
  */
 static int on_pinch(const gesture_t *gest, void *user)
@@ -877,7 +878,9 @@ static int on_pinch(const gesture_t *gest, void *user)
         vec2_copy(gest->pos, goxel.move_origin.pos);
         start_dist = camera->dist;
     }
-    if (gest->nb_touches != 2) return 0;
+    // One finger: the gesture started with two fingers and one was lifted,
+    // continue the rotation.
+    if (gest->nb_touches != 1 && gest->nb_touches != 2) return 0;
 
     mat4_copy(goxel.move_origin.camera_mat, camera->mat);
     camera->dist = start_dist;
@@ -889,6 +892,7 @@ static int on_pinch(const gesture_t *gest, void *user)
             gest->viewport[3] * 2 * M_PI;
     camera_turntable(camera, z_rot, x_rot);
 
+    if (gest->nb_touches != 2) return 0;
     dist = start_dist / max(gest->pinch, 0.01f);
     mat4_itranslate(camera->mat, 0, 0, -(start_dist - dist));
     camera->dist = dist;

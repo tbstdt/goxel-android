@@ -123,7 +123,7 @@ static void update_multi_touch(gesture_t *gest, const inputs_t *inputs)
 {
     const touch_t *ts = inputs->touches;
     float center[2], spread;
-    int i, n, idx[2];
+    int i, n, idx[2] = {0, 0};
 
     n = get_fingers(inputs, center, &spread, idx);
 
@@ -159,9 +159,15 @@ static void update_multi_touch(gesture_t *gest, const inputs_t *inputs)
         break;
     case GESTURE_BEGIN:
     case GESTURE_UPDATE:
+        // From two fingers to one: keep going with one finger (rotation),
+        // until the last finger is up.
+        if (n == 1 && gest->nb_touches == 2) {
+            multi_touch_start(gest, inputs, n, center, spread, idx);
+            break;
+        }
         if (n < gest->nb_touches) {
-            // Lifting a finger ends the gesture, we don't want to switch
-            // from a three fingers pan to a two fingers rotation.
+            // Otherwise lifting a finger ends the gesture: more than two
+            // fingers is not something we handle (system gestures).
             gest->state = GESTURE_END;
             gest->wait_up = n > 0;
             // More than two fingers is likely a system gesture, and the
