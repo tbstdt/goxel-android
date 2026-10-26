@@ -93,6 +93,12 @@ typedef struct {
 // stb array of registered scripts
 static script_t *g_scripts = NULL;
 
+// Message of the last script error.
+static char g_last_error[512];
+
+// Number of calls to registerScript / registerFormat.
+static int g_nb_registrations = 0;
+
 typedef struct {
     int size;
     float *values;
@@ -671,6 +677,7 @@ static JSValue js_goxel_registerFormat(JSContext *ctx, JSValueConst this_val,
     script_file_format_t *format;
     uint32_t idx;
 
+    g_nb_registrations++;
     args = argv[0];
     name = JS_ToCString(ctx, JS_GetPropertyStr(ctx, args, "name"));
 
@@ -717,8 +724,17 @@ static JSValue js_goxel_registerScript(JSContext *ctx, JSValueConst this_val,
     data = argv[0];
     name = JS_ToCString(ctx, JS_GetPropertyStr(ctx, data, "name"));
     LOG_I("Register script %s", name);
+    g_nb_registrations++;
     snprintf(script.name, sizeof(script.name), "%s", name);
     script.execute_fn = JS_GetPropertyStr(ctx, data, "onExecute");
+    // A script imported again replaces the old version.
+    for (int i = 0; i < arrlen(g_scripts); i++) {
+        if (strcmp(g_scripts[i].name, script.name) != 0) continue;
+        JS_FreeValue(ctx, g_scripts[i].execute_fn);
+        g_scripts[i] = script;
+        JS_FreeCString(ctx, name);
+        return JS_UNDEFINED;
+    }
     arrput(g_scripts, script);
     JS_FreeCString(ctx, name);
     return JS_UNDEFINED;
@@ -871,7 +887,12 @@ static int script_run_from_str(
 
     val = JS_Eval(g_ctx, script, len, filename, JS_EVAL_TYPE_MODULE);
     if (JS_IsException(val)) {
-        js_std_dump_error(g_ctx);
+        JSValue exception = JS_GetException(g_ctx);
+        const char *msg = JS_ToCString(g_ctx, exception);
+        snprintf(g_last_error, sizeof(g_last_error), "%s", msg ?: "error");
+        LOG_E("Script %s: %s", filename, g_last_error);
+        JS_FreeCString(g_ctx, msg);
+        JS_FreeValue(g_ctx, exception);
         ret = -1;
     }
     JS_FreeValue(g_ctx, val);
@@ -928,6 +949,50 @@ void script_init(void)
 {
     assets_list("data/scripts/", NULL, on_script);
     sys_iter_paths(SYS_LOCATION_CONFIG, SYS_DIR, "scripts", NULL, on_dir);
+}
+
+int script_import_file(const char *path, char *error, size_t error_size)
+{
+    char dir[1024], dst[1024], name[256];
+    char *data;
+    int size, nb_registrations = g_nb_registrations;
+    FILE *out;
+
+    error[0] = '\0';
+    data = read_file(path, &size);
+    if (!data) {
+        snprintf(error, error_size, "Cannot read %s", path);
+        return -1;
+    }
+    if (script_run_from_str(data, size, path, 0, NULL) != 0) {
+        snprintf(error, error_size, "%s", g_last_error);
+        free(data);
+        return -1;
+    }
+    if (g_nb_registrations == nb_registrations) {
+        snprintf(error, error_size, "%s",
+                 "The file doesn't register any script or format "
+                 "(goxel.registerScript, goxel.registerFormat).");
+        free(data);
+        return -1;
+    }
+    // It works: keep a copy in the user scripts directory, loaded at
+    // startup.
+    if (sys_get_user_dir()) {
+        path_basename(path, name, sizeof(name));
+        snprintf(dir, sizeof(dir), "%s/scripts/", sys_get_user_dir());
+        snprintf(dst, sizeof(dst), "%s%s", dir, name);
+        sys_make_dir(dir);
+        out = fopen(dst, "wb");
+        if (out) {
+            fwrite(data, 1, size, out);
+            fclose(out);
+        } else {
+            LOG_E("Cannot write %s", dst);
+        }
+    }
+    free(data);
+    return 0;
 }
 
 void script_release(void)

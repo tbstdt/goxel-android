@@ -65,6 +65,30 @@ static void export_menu_callback(void *user, file_format_t *f)
         goxel_export_to_file(NULL, f->name);
 }
 
+static int message_popup(void *data)
+{
+    gui_text("%s", (const char*)data);
+    return gui_button(_("OK"), 0, 0);
+}
+
+static void import_script(void)
+{
+    const char *path;
+    const char *filters[] = {"*.js", NULL};
+    char msg[512], name[256];
+
+    path = sys_open_file_dialog(_("Import Script"), NULL, filters, "js");
+    if (!path) return;
+    script_import_file(path, msg, sizeof(msg));
+    if (!msg[0]) {
+        path_basename(path, name, sizeof(name));
+        snprintf(msg, sizeof(msg), _("Imported %s, see the Scripts menu."),
+                 name);
+    }
+    gui_open_popup(_("Import Script"), GUI_POPUP_RESIZE, strdup(msg),
+                   message_popup);
+}
+
 static void on_script(void *user, const char *name)
 {
     if (gui_menu_item(0, name, true))
@@ -156,6 +180,8 @@ void gui_menu(void)
     if (gui_menu_begin(_("Scripts"), true)) {
         if (gui_menu_item(0, _("About Scripts"), true))
             gui_open_popup("Scripts", 0, NULL, gui_about_scripts_popup);
+        if (gui_menu_item(0, _("Import Script"), true))
+            import_script();
         script_iter_all(NULL, on_script);
         gui_menu_end();
     }

@@ -28,6 +28,13 @@ int script_run_from_file(const char *filename, int argc, const char **argv);
 void script_init(void);
 
 /*
+ * Load a script from a file, and keep a copy of it in the user scripts
+ * directory so that it is loaded at startup.  On error, or if no script
+ * was registered, set an error message.
+ */
+int script_import_file(const char *path, char *error, size_t error_size);
+
+/*
  * List all the registered scripts to show in the script menu.
  */
 void script_iter_all(void *user, void (*f)(void *user, const char *name));

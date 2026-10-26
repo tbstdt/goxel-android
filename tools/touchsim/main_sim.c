@@ -35,6 +35,7 @@
  *   drag X0 Y0 X1 Y1 N     One finger drag in N steps.
  *   back                   Android back button.
  *   menu PATH              Click a touch menu item, e.g. menu File/Save As
+ *   dialog PATH            Answer the next file dialog with PATH.
  *   shot PATH              Save the current frame.
  *   log TEXT               Print TEXT.
  */
@@ -56,11 +57,24 @@ static struct {
         bool    down;
     } fingers[4];
     char        autosave_dir[1024];
+    char        dialog_path[1024];  // Answer of the next file dialog.
 } g = {.w = 1080, .h = 2400, .scale = 2.625};
 
 static void sim_log(void *user, const char *msg)
 {
     fprintf(stderr, "%s\n", msg);
+}
+
+static bool open_dialog(void *user, char *buf, size_t buf_size, int flags,
+                        const char *title, const char *default_path,
+                        int nb_filters, const char * const *filters,
+                        const char *filters_desc)
+{
+    printf("dialog '%s'\n", title);
+    if (!g.dialog_path[0]) return false;
+    snprintf(buf, buf_size, "%s", g.dialog_path);
+    g.dialog_path[0] = '\0';
+    return true;
 }
 
 static bool egl_init(void)
@@ -193,6 +207,8 @@ static bool run_line(char *line)
         }
         g.fingers[0].down = false;
         frames(2);
+    } else if (strcmp(cmd, "dialog") == 0) {
+        sscanf(line, "%*s %1023s", g.dialog_path);
     } else if (strcmp(cmd, "menu") == 0) {
         // The rest of the line, without the new line.
         snprintf(arg, sizeof(arg), "%s", line + 5);
@@ -233,8 +249,12 @@ int main(int argc, char **argv)
         return 1;
     }
     sys_callbacks.log = sim_log;
+    sys_callbacks.open_dialog = open_dialog;
     // Fresh settings for each run.
+    // (GOXEL_SIM_HOME to keep them between runs).
     snprintf(home, sizeof(home), "/tmp/goxel-touchsim-%d", getpid());
+    if (getenv("GOXEL_SIM_HOME"))
+        snprintf(home, sizeof(home), "%s", getenv("GOXEL_SIM_HOME"));
     setenv("HOME", home, 1);
 
     while (fgets(line, sizeof(line), file)) {

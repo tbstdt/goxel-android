@@ -48,6 +48,9 @@ Unsaved work is autosaved when the app goes to the background and every
 minute.  If Android kills the app, it proposes to restore it on the next
 start.
 
+Scripts > Import Script loads a javascript plugin (see
+[data/scripts](data/scripts)) and keeps it for the next starts.
+
 
 Building the APK
 ----------------

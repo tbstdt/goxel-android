@@ -63,7 +63,13 @@ int gui_about_scripts_popup(void *data)
 
     gui_text("Starting from version 0.12.0 Goxel adds experimental support "
              "for javascript plugins.");
+#ifdef GOXEL_TOUCH_UI
+    // The app directory is not accessible on a phone.
+    (void)dir;
+    gui_text(_("Add your own scripts with Scripts > Import Script."));
+#else
     gui_text(_("Add your own scripts in the directory:\n%s."), dir);
+#endif
     gui_text(_("See some examples at %s."), examples_url);
     return gui_button(_("OK"), 0, 0);
 }
