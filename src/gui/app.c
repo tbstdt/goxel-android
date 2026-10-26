@@ -30,7 +30,11 @@
 #endif
 
 #ifndef GUI_HAS_MENU
-#   define GUI_HAS_MENU 1
+#   ifdef __ANDROID__
+#       define GUI_HAS_MENU 0 // See gui_touch_menu_button.
+#   else
+#       define GUI_HAS_MENU 1
+#   endif
 #endif
 
 #ifndef YOCTO
@@ -298,5 +302,7 @@ void gui_app(void)
         (goxel.gui.current_panel == PANEL_RENDER ||
          PANELS[PANEL_RENDER].detached);
 
-    gui_view_cube(goxel.gui.viewport[2] - 128, item_height + 2, 128, 128);
+    // Without the menu bar, the top bar is at the top: put the cube below.
+    gui_view_cube(goxel.gui.viewport[2] - 128,
+                  GUI_HAS_MENU ? item_height + 2 : y, 128, 128);
 }

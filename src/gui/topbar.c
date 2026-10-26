@@ -52,9 +52,15 @@ static int gui_mode_select(void)
     return 0;
 }
 
+void gui_menu(void);
+
 void gui_top_bar(void)
 {
     gui_row_begin(0); {
+#ifdef __ANDROID__
+        // No menu bar on touch screens: the menu is behind this button.
+        gui_touch_menu_button(gui_menu);
+#endif
         gui_group_begin(NULL); {
             gui_row_begin(0); {
                 gui_action_button(ACTION_undo, NULL, 0);

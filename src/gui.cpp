@@ -1838,14 +1838,71 @@ void gui_menu_bar_end(void)
 }
 
 
+// Touch menu state: when set, the top level menus are rendered as
+// collapsing headers instead of popup menus.
+static struct {
+    bool active;
+    int  depth;
+    bool is_header[8];
+} g_touch_menu = {};
+
 bool gui_menu_begin(const char *label, bool enabled)
 {
-    return ImGui::BeginMenu(label, enabled);
+    bool header, ret;
+    if (!g_touch_menu.active)
+        return ImGui::BeginMenu(label, enabled);
+    header = g_touch_menu.depth == 0;
+    if (header) {
+        ImGui::BeginDisabled(!enabled);
+        ret = ImGui::CollapsingHeader(label);
+        ImGui::EndDisabled();
+    } else {
+        ret = ImGui::BeginMenu(label, enabled);
+    }
+    if (ret && g_touch_menu.depth < (int)ARRAY_SIZE(g_touch_menu.is_header))
+        g_touch_menu.is_header[g_touch_menu.depth++] = header;
+    return ret;
 }
 
 void gui_menu_end(void)
 {
-    ImGui::EndMenu();
+    if (!g_touch_menu.active) {
+        ImGui::EndMenu();
+        return;
+    }
+    if (g_touch_menu.depth == 0) return;
+    if (!g_touch_menu.is_header[--g_touch_menu.depth])
+        ImGui::EndMenu();
+}
+
+void gui_touch_menu_button(void (*menu_fn)(void))
+{
+    bool v = false;
+    ImGuiIO& io = ImGui::GetIO();
+
+    if (gui_selectable_icon(_("Menu"), &v, ICON_MENU))
+        ImGui::OpenPopup("##touch_menu");
+
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetItemRectMin().x,
+                                   ImGui::GetItemRectMax().y + 4));
+    ImGui::SetNextWindowSizeConstraints(
+            ImVec2(min(280.0f, io.DisplaySize.x - 16), 0),
+            ImVec2(io.DisplaySize.x - 16, io.DisplaySize.y * 0.8f));
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, COLOR(MENU, BACKGROUND, false));
+    ImGui::PushStyleColor(ImGuiCol_Text, COLOR(MENU, TEXT, false));
+    // Big items, easy to hit with a finger.
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12, 12));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 14));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12, 12));
+    if (ImGui::BeginPopup("##touch_menu")) {
+        g_touch_menu.active = true;
+        g_touch_menu.depth = 0;
+        menu_fn();
+        g_touch_menu.active = false;
+        ImGui::EndPopup();
+    }
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(2);
 }
 
 bool gui_menu_item(int action, const char *label, bool enabled)

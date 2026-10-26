@@ -74,6 +74,114 @@ static float get_angle(const float a0[2], const float a1[2],
     return atan2(det, dot);
 }
 
+// Max duration and movement for a multi fingers tap.
+#define TAP_MAX_TIME 0.3
+#define TAP_MAX_DIST 16
+
+// Centroid of the fingers down, and mean distance to it.  Also set the
+// indices of the first two fingers in idx.  Return the number of fingers.
+static int get_fingers(const inputs_t *inputs, float center[2],
+                       float *spread, int idx[2])
+{
+    const touch_t *ts = inputs->touches;
+    int i, n = 0;
+
+    vec2_set(center, 0, 0);
+    *spread = 0;
+    for (i = 0; i < ARRAY_SIZE(inputs->touches); i++) {
+        if (!ts[i].down[0]) continue;
+        if (n < 2) idx[n] = i;
+        vec2_add(center, ts[i].pos, center);
+        n++;
+    }
+    if (n == 0) return 0;
+    vec2_mul(center, 1.0f / n, center);
+    for (i = 0; i < ARRAY_SIZE(inputs->touches); i++) {
+        if (ts[i].down[0]) *spread += vec2_dist(ts[i].pos, center) / n;
+    }
+    return n;
+}
+
+// Start (or restart after the number of fingers changed) the gesture.
+static void multi_touch_start(gesture_t *gest, const inputs_t *inputs,
+                              int n, const float center[2], float spread,
+                              const int idx[2])
+{
+    gest->state = GESTURE_BEGIN;
+    gest->nb_touches = n;
+    gest->max_touches = max(gest->max_touches, n);
+    gest->pinch = 1;
+    gest->rotation = 0;
+    gest->start_spread = max(spread, 1.0f);
+    vec2_copy(inputs->touches[idx[0]].pos, gest->start_pos[0]);
+    vec2_copy(inputs->touches[idx[1]].pos, gest->start_pos[1]);
+    vec2_copy(center, gest->pos);
+    vec2_copy(center, gest->last_pos);
+}
+
+static void update_multi_touch(gesture_t *gest, const inputs_t *inputs)
+{
+    const touch_t *ts = inputs->touches;
+    float center[2], spread;
+    int i, n, idx[2];
+
+    n = get_fingers(inputs, center, &spread, idx);
+
+    // Track each finger movement to detect taps.
+    if (gest->state != GESTURE_POSSIBLE) {
+        for (i = 0; i < ARRAY_SIZE(inputs->touches); i++) {
+            if (!ts[i].down[0]) continue;
+            if (!(gest->seen_mask & (1 << i))) {
+                gest->seen_mask |= 1 << i;
+                vec2_copy(ts[i].pos, gest->touch_start[i]);
+            } else if (vec2_dist(ts[i].pos, gest->touch_start[i]) >
+                       TAP_MAX_DIST) {
+                gest->moved = true;
+            }
+        }
+    }
+
+    switch (gest->state) {
+    case GESTURE_POSSIBLE:
+        if (n == 0) gest->wait_up = false;
+        if (n < 2 || gest->wait_up) break;
+        gest->max_touches = 0;
+        gest->moved = false;
+        gest->tap = 0;
+        gest->start_time = sys_get_time();
+        gest->seen_mask = 0;
+        for (i = 0; i < ARRAY_SIZE(inputs->touches); i++) {
+            if (!ts[i].down[0]) continue;
+            gest->seen_mask |= 1 << i;
+            vec2_copy(ts[i].pos, gest->touch_start[i]);
+        }
+        multi_touch_start(gest, inputs, n, center, spread, idx);
+        break;
+    case GESTURE_BEGIN:
+    case GESTURE_UPDATE:
+        if (n < gest->nb_touches) {
+            // Lifting a finger ends the gesture, we don't want to switch
+            // from a three fingers pan to a two fingers rotation.
+            gest->state = GESTURE_END;
+            gest->wait_up = n > 0;
+            if (!gest->moved &&
+                    sys_get_time() - gest->start_time < TAP_MAX_TIME)
+                gest->tap = gest->max_touches;
+            break;
+        }
+        if (n > gest->nb_touches) {
+            multi_touch_start(gest, inputs, n, center, spread, idx);
+            break;
+        }
+        gest->state = GESTURE_UPDATE;
+        vec2_copy(center, gest->pos);
+        gest->pinch = spread / gest->start_spread;
+        gest->rotation = get_angle(gest->start_pos[0], gest->start_pos[1],
+                                   ts[idx[0]].pos, ts[idx[1]].pos);
+        break;
+    }
+}
+
 static int update(gesture_t *gest, const inputs_t *inputs, int mask)
 {
     const touch_t *ts = inputs->touches;
@@ -142,30 +250,7 @@ static int update(gesture_t *gest, const inputs_t *inputs, int mask)
     }
 
     if (gest->type == GESTURE_PINCH) {
-        switch (gest->state) {
-        case GESTURE_POSSIBLE:
-            if (ts[0].down[0] && ts[1].down[0]) {
-                gest->state = GESTURE_BEGIN;
-                vec2_copy(ts[0].pos, gest->start_pos[0]);
-                vec2_copy(ts[1].pos, gest->start_pos[1]);
-                gest->pinch = 1;
-                gest->rotation = 0;
-                vec2_mix(ts[0].pos, ts[1].pos, 0.5, gest->pos);
-                vec2_copy(gest->pos, gest->last_pos);
-            }
-            break;
-        case GESTURE_BEGIN:
-        case GESTURE_UPDATE:
-            gest->state = GESTURE_UPDATE;
-            gest->pinch = vec2_dist(ts[0].pos, ts[1].pos) /
-                          vec2_dist(gest->start_pos[0], gest->start_pos[1]);
-            gest->rotation = get_angle(gest->start_pos[0], gest->start_pos[1],
-                                       ts[0].pos, ts[1].pos);
-            vec2_mix(ts[0].pos, ts[1].pos, 0.5, gest->pos);
-            if (!ts[0].down[0] || !ts[1].down[0])
-                gest->state = GESTURE_END;
-            break;
-        }
+        update_multi_touch(gest, inputs);
     }
 
     if (gest->type == GESTURE_HOVER) {

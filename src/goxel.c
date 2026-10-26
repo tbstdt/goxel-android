@@ -846,13 +846,22 @@ static int on_zoom(const gesture_t *gest, void *user)
 }
 
 /*
- * Two fingers gesture (touch screens): pan and pinch zoom.
+ * Multi touch gestures (touch screens):
+ * - Two fingers: rotate and pinch zoom.
+ * - Three fingers: pan.
+ * - Two / three fingers tap: undo / redo.
  */
 static int on_pinch(const gesture_t *gest, void *user)
 {
     static float start_dist;
-    float wdelta[3], odelta[3], dist;
+    float wdelta[3], odelta[3], dist, x_rot, z_rot;
     camera_t *camera = get_camera();
+
+    if (gest->state == GESTURE_END) {
+        if (gest->tap == 2) action_exec2(ACTION_undo);
+        if (gest->tap == 3) action_exec2(ACTION_redo);
+        return 0;
+    }
 
     if (gest->state == GESTURE_BEGIN) {
         mat4_copy(camera->mat, goxel.move_origin.camera_mat);
@@ -860,15 +869,27 @@ static int on_pinch(const gesture_t *gest, void *user)
         start_dist = camera->dist;
     }
 
-    vec3_set(wdelta, gest->pos[0] - goxel.move_origin.pos[0],
-                     gest->pos[1] - goxel.move_origin.pos[1], 0);
-    unproject_delta(wdelta, mat4_identity,
-                    camera->proj_mat, gest->viewport, odelta);
-    vec3_imul(odelta, 2);
-    if (!camera->ortho)
-        vec3_imul(odelta, start_dist);
-    mat4_translate(goxel.move_origin.camera_mat, -odelta[0], -odelta[1], 0,
-                   camera->mat);
+    mat4_copy(goxel.move_origin.camera_mat, camera->mat);
+    camera->dist = start_dist;
+
+    if (gest->nb_touches >= 3) {
+        vec3_set(wdelta, gest->pos[0] - goxel.move_origin.pos[0],
+                         gest->pos[1] - goxel.move_origin.pos[1], 0);
+        unproject_delta(wdelta, mat4_identity,
+                        camera->proj_mat, gest->viewport, odelta);
+        vec3_imul(odelta, 2);
+        if (!camera->ortho)
+            vec3_imul(odelta, start_dist);
+        mat4_itranslate(camera->mat, -odelta[0], -odelta[1], 0);
+        return 0;
+    }
+
+    // Same as on_rotate.
+    z_rot = (goxel.move_origin.pos[0] - gest->pos[0]) /
+            gest->viewport[2] * 2 * M_PI;
+    x_rot = (gest->pos[1] - goxel.move_origin.pos[1]) /
+            gest->viewport[3] * 2 * M_PI;
+    camera_turntable(camera, z_rot, x_rot);
 
     dist = start_dist / max(gest->pinch, 0.01f);
     mat4_itranslate(camera->mat, 0, 0, -(start_dist - dist));

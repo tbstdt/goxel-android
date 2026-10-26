@@ -179,6 +179,8 @@ void gui_popup_bottom_end(void);
 
 bool gui_menu_bar_begin(void);
 void gui_menu_bar_end(void);
+// Hamburger button opening the given menu in a touch friendly popup.
+void gui_touch_menu_button(void (*menu_fn)(void));
 bool gui_menu_begin(const char *label, bool enabled);
 void gui_menu_end(void);
 bool gui_menu_item(int action, const char *label, bool enabled);

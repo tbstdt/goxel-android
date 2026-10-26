@@ -22,4 +22,8 @@ debug key).
 
 - One finger on a voxel: use the current tool.
 - One finger on empty space: rotate the view.
-- Two fingers: pan, pinch to zoom.
+- Two fingers: drag to rotate, pinch to zoom.
+- Three fingers: pan.
+- Two fingers tap: undo.  Three fingers tap: redo.
+- View cube (top right): drag to rotate, tap a face to look at it.
+- The menu is behind the hamburger button of the top bar.

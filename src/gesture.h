@@ -36,7 +36,7 @@
  *
  * GESTURE_DRAG     - Click and drag the mouse.
  * GESTURE_CLICK    - Single click.
- * GESTURE_PINCH    - Two fingers pinch.
+ * GESTURE_PINCH    - Two or more fingers: drag, pinch, and multi fingers tap.
  * GESTURE_HOVER    - Move the mouse without clicking.
  */
 enum {
@@ -92,6 +92,16 @@ struct gesture
     float   last_pos[2];
     float   pinch;
     float   rotation;
+    // Multi touch gestures (GESTURE_PINCH) state.
+    int     nb_touches;     // Current number of fingers (>= 2).
+    int     tap;            // On END: number of fingers of a tap, or 0.
+    int     max_touches;
+    double  start_time;
+    bool    moved;
+    bool    wait_up;        // Don't restart until all fingers are up.
+    int     seen_mask;
+    float   touch_start[4][2];
+    float   start_spread;
     int     (*callback)(const gesture_t *gest, void *user);
 };
 
