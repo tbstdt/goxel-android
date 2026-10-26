@@ -265,6 +265,11 @@ void gui_app(void)
     render_left_panel();
     x += gui_window_end().w + spacing;
 
+#ifdef GOXEL_TOUCH_UI
+    // Panels take all the width right of the left bar.
+    goxel.gui.panel_width = goxel.gui.viewport[2] - x - spacing;
+#endif
+
     if (goxel.gui.current_panel) {
         name = tr(PANELS[goxel.gui.current_panel].name);
         flags = gui_window_begin(

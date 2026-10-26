@@ -82,15 +82,16 @@ bool gui_pan_scroll_behavior(int dir);
 // How much space we keep for the labels on the left.
 static const float LABEL_SIZE = 90;
 
-#ifndef GUI_ITEM_HEIGHT
+#ifdef GOXEL_TOUCH_UI
+// Items big enough to be hit with a finger.
+#   define GUI_ITEM_HEIGHT 36
+#   define GUI_ICON_HEIGHT 40
+static const ImVec2 ITEM_SPACING = ImVec2(8, 8);
+#else
 #   define GUI_ITEM_HEIGHT 18
-#endif
-
-#ifndef GUI_ICON_HEIGHT
 #   define GUI_ICON_HEIGHT 32
-#endif
-
 static const ImVec2 ITEM_SPACING = ImVec2(8, 4);
+#endif
 
 #define COL_HEX(x) ImVec4( \
         ((uint8_t)((x >> 24) & 0xff)) / 255.0, \
@@ -734,6 +735,16 @@ static void gui_iter(const inputs_t *inputs)
         io.FontGlobalScale = 1 / inputs->scale;
         io.MousePos.x = inputs->touches[0].pos[0];
         io.MousePos.y = inputs->touches[0].pos[1];
+#ifdef GOXEL_TOUCH_UI
+        // Once the finger is up (and ImGui saw the release), nothing is
+        // hovered anymore.
+        {
+            static bool was_down = false;
+            if (!inputs->touches[0].down[0] && !was_down)
+                io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
+            was_down = inputs->touches[0].down[0];
+        }
+#endif
         io.MouseDown[0] = inputs->touches[0].down[0];
         io.MouseDown[1] = inputs->touches[0].down[1];
         io.MouseDown[2] = inputs->touches[0].down[2];
@@ -1409,15 +1420,38 @@ static bool color_picker(const char *label, uint8_t color[4])
 
     if (ImGui::IsWindowAppearing())
         memcpy(backup_color, color, sizeof(backup_color));
-    ret = ImGui::ColorPicker4(label, colorf,
-            ImGuiColorEditFlags_NoSidePreview |
+#ifdef GOXEL_TOUCH_UI
+    // The picker must fit the screen width (including the hue bar).
+    ImGui::PushItemWidth(ImGui::GetIO().DisplaySize.x - 40);
+#endif
+    // No label: on a phone it doesn't fit next to the picker.
+    ret = ImGui::ColorPicker4(DEFINED(GOXEL_TOUCH_UI) ? "##picker" : label,
+            colorf, ImGuiColorEditFlags_NoSidePreview |
             ImGuiColorEditFlags_NoSmallPreview);
+#ifdef GOXEL_TOUCH_UI
+    ImGui::PopItemWidth();
+#endif
     if (ret) {
         color[0] = colorf[0] * 255;
         color[1] = colorf[1] * 255;
         color[2] = colorf[2] * 255;
         color[3] = colorf[3] * 255;
     }
+#ifdef GOXEL_TOUCH_UI
+    // No room on the side: current and original colors below.
+    ImGui::Text("Current");
+    ImGui::SameLine();
+    ImGui::ColorButton("##current", color,
+            ImGuiColorEditFlags_NoPicker, ImVec2(60, 40));
+    ImGui::SameLine();
+    ImGui::Text("Original");
+    ImGui::SameLine();
+    if (ImGui::ColorButton("##previous", backup_color,
+                ImGuiColorEditFlags_NoPicker, ImVec2(60, 40))) {
+        memcpy(color, backup_color, sizeof(backup_color));
+        ret = true;
+    }
+#else
     ImGui::SameLine();
     ImGui::BeginGroup();
     ImGui::Text("Current");
@@ -1429,8 +1463,8 @@ static bool color_picker(const char *label, uint8_t color[4])
         memcpy(color, backup_color, sizeof(backup_color));
         ret = true;
     }
-
     ImGui::EndGroup();
+#endif
     return ret;
 }
 
@@ -1465,7 +1499,22 @@ bool gui_color_small(const char *label, uint8_t color[4])
                        color[3] / 255.f};
     ImGui::PushID(label);
     label_aligned(label, LABEL_SIZE);
+#ifdef GOXEL_TOUCH_UI
+    // ImGui own picker popup is wider than a phone screen, use ours.
+    (void)colorf;
+    ret = false;
+    if (ImGui::ColorButton("", color, 0, ImVec2(GUI_ICON_HEIGHT,
+                                                GUI_ICON_HEIGHT)))
+        ImGui::OpenPopup("GoxelPicker");
+    if (ImGui::BeginPopupContextItem("GoxelPicker")) {
+        ret = color_picker(label, color);
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
+    return ret;
+#else
     ret = ImGui::ColorEdit4("", colorf, ImGuiColorEditFlags_NoInputs);
+#endif
     ImGui::PopID();
     if (ret) {
         color[0] = colorf[0] * 255;
@@ -1605,14 +1654,17 @@ bool gui_input_text_multiline(const char *label, char *buf, int size,
 
 bool gui_combo(const char *label, int *v, const char **names, int nb)
 {
-    bool ret;
-    ImGui::PushItemWidth(-1);
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, COLOR(COMBO, INNER, 0));
-    ImGui::PushStyleColor(ImGuiCol_PopupBg, COLOR(COMBO, BACKGROUND, 0));
-    ImGui::PushStyleColor(ImGuiCol_Button, COLOR(COMBO, ITEM, 0));
-    ret = ImGui::Combo(label, v, names, nb);
-    ImGui::PopStyleColor(3);
-    ImGui::PopItemWidth();
+    bool ret = false;
+    int i;
+    if (!gui_combo_begin(label, (*v >= 0 && *v < nb) ? names[*v] : ""))
+        return false;
+    for (i = 0; i < nb; i++) {
+        if (gui_combo_item(names[i], i == *v)) {
+            *v = i;
+            ret = true;
+        }
+    }
+    gui_combo_end();
     return ret;
 }
 
@@ -1624,17 +1676,26 @@ bool gui_combo_begin(const char *label, const char *preview)
     ImGui::PushStyleColor(ImGuiCol_FrameBg, COLOR(COMBO, INNER, 0));
     ImGui::PushStyleColor(ImGuiCol_PopupBg, COLOR(COMBO, BACKGROUND, 0));
     ImGui::PushStyleColor(ImGuiCol_Button, COLOR(COMBO, ITEM, 0));
-    ret = ImGui::BeginCombo(label, preview);
+    ret = ImGui::BeginCombo(label, preview,
+            DEFINED(GOXEL_TOUCH_UI) ? ImGuiComboFlags_HeightLargest : 0);
 
     if (!ret) {
         ImGui::PopItemWidth();
         ImGui::PopStyleColor(3);
     }
+#ifdef GOXEL_TOUCH_UI
+    // Big items, easy to hit with a finger.
+    if (ret) ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 24));
+#endif
     return ret;
 }
 
 void gui_combo_end(void)
 {
+#ifdef GOXEL_TOUCH_UI
+    ImGui::PopStyleVar();
+    gui_pan_scroll_behavior(1);
+#endif
     ImGui::EndCombo();
     ImGui::PopStyleColor(3);
     ImGui::PopItemWidth();
@@ -2039,6 +2100,8 @@ void gui_touch_menu_button(void (*menu_fn)(void))
 void gui_tooltip(const char *str)
 {
     if (gui->scrolling) return;
+    // No hover on touch screens: the tooltip would just stay there.
+    if (DEFINED(GOXEL_TOUCH_UI)) return;
     ImGui::PushStyleColor(ImGuiCol_PopupBg, COLOR(TOOLTIP, BACKGROUND, 0));
     ImGui::SetTooltip("%s", str);
     ImGui::PopStyleColor();
