@@ -1455,7 +1455,7 @@ static bool color_picker(const char *label, uint8_t color[4])
         memcpy(backup_color, color, sizeof(backup_color));
 #ifdef GOXEL_TOUCH_UI
     // The picker must fit the screen width (including the hue bar).
-    ImGui::PushItemWidth(ImGui::GetIO().DisplaySize.x - 40);
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 #endif
     // No label: on a phone it doesn't fit next to the picker.
     ret = ImGui::ColorPicker4(DEFINED(GOXEL_TOUCH_UI) ? "##picker" : label,
@@ -1501,6 +1501,42 @@ static bool color_picker(const char *label, uint8_t color[4])
     return ret;
 }
 
+/*
+ * Popup with the color picker for the last item.  On touch screens: full
+ * width, below the item (or above if it is in the bottom half of the
+ * screen), with a title and a close button.
+ */
+static bool picker_popup(const char *label, uint8_t color[4])
+{
+    bool ret = false;
+#ifdef GOXEL_TOUCH_UI
+    ImGuiIO& io = ImGui::GetIO();
+    ImVec2 item_min = ImGui::GetItemRectMin();
+    ImVec2 item_max = ImGui::GetItemRectMax();
+    bool below = item_max.y < io.DisplaySize.y / 2;
+
+    ImGui::SetNextWindowPos(ImVec2(8, below ? item_max.y + 4 : item_min.y - 4),
+                            ImGuiCond_Appearing, ImVec2(0, below ? 0 : 1));
+    ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x - 16, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, 10));
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, COLOR(WINDOW, BACKGROUND, false));
+    if (ImGui::BeginPopup("GoxelPicker")) {
+        if (gui_panel_header(_("Color")))
+            ImGui::CloseCurrentPopup();
+        ret = color_picker(label, color);
+        ImGui::EndPopup();
+    }
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+#else
+    if (ImGui::BeginPopupContextItem("GoxelPicker")) {
+        ret = color_picker(label, color);
+        ImGui::EndPopup();
+    }
+#endif
+    return ret;
+}
+
 bool gui_color(const char *label, uint8_t color[4])
 {
     bool ret = false;
@@ -1511,12 +1547,7 @@ bool gui_color(const char *label, uint8_t color[4])
         ImGui::OpenPopup("GoxelPicker");
     }
 
-    if (ImGui::BeginPopupContextItem("GoxelPicker")) {
-        if (color_picker(label, color)) {
-            ret = true;
-        }
-        ImGui::EndPopup();
-    }
+    if (picker_popup(label, color)) ret = true;
 
     ImGui::PopID();
     if (gui->is_row) ImGui::SameLine();
@@ -1539,10 +1570,7 @@ bool gui_color_small(const char *label, uint8_t color[4])
     if (ImGui::ColorButton("", color, 0, ImVec2(GUI_ICON_HEIGHT,
                                                 GUI_ICON_HEIGHT)))
         ImGui::OpenPopup("GoxelPicker");
-    if (ImGui::BeginPopupContextItem("GoxelPicker")) {
-        ret = color_picker(label, color);
-        ImGui::EndPopup();
-    }
+    ret = picker_popup(label, color);
     ImGui::PopID();
     return ret;
 #else
