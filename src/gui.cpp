@@ -2396,6 +2396,30 @@ bool gui_icons_grid(int nb, const gui_icon_info_t *icons, int *current)
     return ret;
 }
 
+bool gui_is_over_window(float x, float y)
+{
+    ImGuiContext *g = GImGui;
+    ImGuiWindow *w;
+    int i;
+
+    if (!g) return false;
+    // A modal popup blocks everything.
+    if (ImGui::GetTopMostPopupModal()) return true;
+    // The windows as rendered during the last frame.
+    for (i = 0; i < g->Windows.Size; i++) {
+        w = g->Windows[i];
+        if (!w->Active || w->Hidden || w->IsFallbackWindow) continue;
+        // Overlay windows that don't take inputs (e.g. ImGuizmo full
+        // screen window).  Note: panels that are being scrolled only have
+        // NoMouseInputs, they still count.
+        if ((w->Flags & ImGuiWindowFlags_NoInputs) == ImGuiWindowFlags_NoInputs)
+            continue;
+        if (ImRect(w->Pos, w->Pos + w->Size).Contains(ImVec2(x, y)))
+            return true;
+    }
+    return false;
+}
+
 bool gui_want_capture_mouse(void)
 {
     /* Note: we check both gui->want_capture_mouse and

@@ -52,6 +52,9 @@ int gui_window_begin(const char *label, float x, float y, float w, float h,
 
 gui_window_ret_t gui_window_end(void);
 
+// Test if a screen position is over any UI window (as of the last frame).
+bool gui_is_over_window(float x, float y);
+
 bool gui_want_capture_mouse(void);
 
 void gui_release(void);

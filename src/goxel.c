@@ -692,16 +692,34 @@ int goxel_iter(const inputs_t *inputs)
             inputs2.touches[i].pos[1] = -1;
         }
         // Move the mouse outside the viewport if the UI captures it.
-        if (gui_want_capture_mouse()) {
+        if (!DEFINED(GOXEL_TOUCH_UI) && gui_want_capture_mouse()) {
             inputs2.touches[i].pos[0] = -1;
             inputs2.touches[i].pos[1] = -1;
-            // On touch screens the UI only knows it captured a touch one
-            // frame after it started: abort the gestures that started in
-            // the view during that frame.
-            if (DEFINED(GOXEL_TOUCH_UI) && inputs->touches[i].down[0])
-                inputs2.touches_canceled = true;
         }
     }
+#ifdef GOXEL_TOUCH_UI
+    // Touch screens: a touch that starts over the UI belongs to the UI until
+    // the finger is up, the view never sees it.  We can't rely on ImGui
+    // capture flags: they are one frame late, and can change during the
+    // touch (e.g. scrolling).
+    {
+        static bool was_down[ARRAY_SIZE(inputs->touches)];
+        static bool on_ui[ARRAY_SIZE(inputs->touches)];
+        const touch_t *t;
+        for (i = 0; i < (int)ARRAY_SIZE(inputs->touches); i++) {
+            t = &inputs->touches[i];
+            if (t->down[0] && !was_down[i])
+                on_ui[i] = gui_is_over_window(t->pos[0], t->pos[1]);
+            was_down[i] = t->down[0];
+            if (!on_ui[i]) continue;
+            memset(inputs2.touches[i].down, 0,
+                   sizeof(inputs2.touches[i].down));
+            inputs2.touches[i].pos[0] = -1;
+            inputs2.touches[i].pos[1] = -1;
+            if (!t->down[0]) on_ui[i] = false;
+        }
+    }
+#endif
     arrfree(goxel.hints);
     goxel_mouse_in_view(goxel.gui.viewport, &inputs2, true);
     play_build_sound_if_needed();
