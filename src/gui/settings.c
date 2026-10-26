@@ -176,6 +176,12 @@ int gui_settings_popup(void *data)
                     goxel.emulate_three_buttons_mouse);
             settings_save();
         }
+#ifdef __ANDROID__
+        if (gui_checkbox(_("Pan button"), &goxel.show_pan_button,
+                         "Show a button to pan the view.")) {
+            settings_save();
+        }
+#endif
     } gui_section_end();
 
     if (gui_section_begin(_("Paths"), GUI_SECTION_COLLAPSABLE_CLOSED)) {
@@ -269,6 +275,9 @@ static int settings_ini_handler(void *user, const char *section,
                 goxel.emulate_three_buttons_mouse = KEY_LEFT_ALT;
             }
         }
+        if (strcmp(name, "pan_button") == 0) {
+            goxel.show_pan_button = atoi(value);
+        }
     }
     return 0;
 }
@@ -280,6 +289,7 @@ void settings_load(void)
     LOG_I("Read settings file: %s", path);
     arrfree(goxel.keymaps);
     goxel.emulate_three_buttons_mouse = 0;
+    goxel.show_pan_button = true;
     ini_parse(path, settings_ini_handler, NULL);
     actions_check_shortcuts();
     gesture_set_emulate_three_buttons_mouse(goxel.emulate_three_buttons_mouse);
@@ -353,11 +363,12 @@ void settings_save(void)
     fprintf(file, "[shortcuts]\n");
     actions_iter(shortcut_save_callback, file);
 
+    fprintf(file, "[inputs]\n");
     if (goxel.emulate_three_buttons_mouse) {
         assert(goxel.emulate_three_buttons_mouse == KEY_LEFT_ALT);
-        fprintf(file, "[inputs]\n");
-        fprintf(file, "emulate_three_buttons_mouse=alt");
+        fprintf(file, "emulate_three_buttons_mouse=alt\n");
     }
+    fprintf(file, "pan_button=%d\n", goxel.show_pan_button ? 1 : 0);
 
     fprintf(file, "\n");
     save_keymaps(file);

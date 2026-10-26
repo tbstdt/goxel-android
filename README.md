@@ -24,7 +24,8 @@ Touch controls
 - Two fingers: drag to rotate, pinch to zoom.
 - Two fingers tap: undo.
 - View cube (top right): drag to rotate, tap a face to look at it.
-- Round button below the view cube: drag it to pan the view.
+- Small round button at the bottom center: drag it to pan the view (can be
+  hidden in Edit > Settings > Inputs).
 - The menu is behind the hamburger button of the top bar.
 - Menus and panels scroll with a swipe.
 

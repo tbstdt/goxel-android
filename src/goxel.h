@@ -565,6 +565,7 @@ typedef struct goxel
 
     // Can be set to a key code (only KEY_LEFT_ALT is supported for now).
     int emulate_three_buttons_mouse;
+    bool show_pan_button; // Touch screens only.
 
     // Stb arrary of hints to show on top of the screen.
     hint_t *hints;

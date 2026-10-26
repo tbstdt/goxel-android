@@ -689,6 +689,11 @@ int goxel_iter(const inputs_t *inputs)
         if (gui_want_capture_mouse()) {
             inputs2.touches[i].pos[0] = -1;
             inputs2.touches[i].pos[1] = -1;
+            // On touch screens the UI only knows it captured a touch one
+            // frame after it started: abort the gestures that started in
+            // the view during that frame.
+            if (DEFINED(__ANDROID__) && inputs->touches[i].down[0])
+                inputs2.touches_canceled = true;
         }
     }
     arrfree(goxel.hints);

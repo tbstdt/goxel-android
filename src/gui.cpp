@@ -674,7 +674,9 @@ void gui_pan_button(float x, float y, float size)
                               ImGuiWindowFlags_NoBackground);
     ImGui::InvisibleButton("##pan", ImVec2(size, size));
     active = ImGui::IsItemActive();
-    if (active && (io.MouseDelta.x || io.MouseDelta.y))
+    // Skip the first frame: the delta is from the previous touch position.
+    if (active && !ImGui::IsItemActivated() &&
+            (io.MouseDelta.x || io.MouseDelta.y))
         goxel_pan_view(goxel.gui.viewport, io.MouseDelta.x, io.MouseDelta.y);
 
     draw_list = ImGui::GetWindowDrawList();
@@ -684,7 +686,8 @@ void gui_pan_button(float x, float y, float size)
     uv0 = get_icon_uv(ICON_TOOL_MOVE);
     uv1 = uv0 + ImVec2(1. / 8, 1. / 8);
     draw_list->AddImage((intptr_t)g_tex_icons->tex,
-                        center - ImVec2(16, 16), center + ImVec2(16, 16),
+                        center - ImVec2(size / 2 - 4, size / 2 - 4),
+                        center + ImVec2(size / 2 - 4, size / 2 - 4),
                         uv0, uv1, get_icon_color(ICON_TOOL_MOVE, active));
     ImGui::End();
     ImGui::PopStyleVar();

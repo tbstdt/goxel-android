@@ -307,6 +307,9 @@ void gui_app(void)
     gui_view_cube(goxel.gui.viewport[2] - 128, y, 128, 128);
 #ifdef __ANDROID__
     // Drag this button to pan the view.
-    gui_pan_button(goxel.gui.viewport[2] - 64 - 32, y + 128 + 8, 64);
+    if (goxel.show_pan_button) {
+        gui_pan_button(goxel.gui.viewport[2] / 2 - 16,
+                       goxel.gui.viewport[3] - 32 - 24, 32);
+    }
 #endif
 }
